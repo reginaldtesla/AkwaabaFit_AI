@@ -155,7 +155,9 @@ flutter test
 
 This is a final year group project. Team members:
 
-- [Add team member names and roles]
+- Darko Kwaku Agyemang
+- Bernard
+- Klenam
 
 ## License
 
