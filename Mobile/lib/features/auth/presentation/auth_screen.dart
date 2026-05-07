@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'health_profile_screen.dart';
+import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & API LOGIC (RIVERPOD + DIO)
@@ -159,7 +160,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             .checkProfileCompleted();
         if (profileCompleted) {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const AppScreen()),
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
           );
         } else {
           Navigator.of(context).pushReplacement(

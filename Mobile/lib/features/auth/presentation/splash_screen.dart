@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
+import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
+import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 
 // --- Placeholder for your actual Auth logic ---
 // This provider checks secure storage for the Sanctum token and profile completion.
@@ -106,12 +108,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               break;
             case 'authenticated_profile_incomplete':
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => HealthProfileScreen()),
+                MaterialPageRoute(builder: (_) => const HealthProfileScreen()),
               );
               break;
             case 'authenticated_profile_complete':
               Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const AppScreen()),
+                MaterialPageRoute(builder: (_) => const DashboardScreen()),
               );
               break;
           }

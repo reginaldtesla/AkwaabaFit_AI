@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & API LOGIC (RIVERPOD + DIO)
@@ -144,7 +145,9 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
       // Navigate to main app
       Navigator.of(
         context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const AppScreen()));
+      ).pushReplacement(
+        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      );
     }
   }
 
