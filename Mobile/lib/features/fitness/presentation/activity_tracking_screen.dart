@@ -110,7 +110,6 @@ class ActivityTrackingScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: _buildAppBar(),
       body: activityState.when(
         loading: () =>
             const Center(child: CircularProgressIndicator(color: secondaryBlue)),
@@ -215,36 +214,6 @@ class ActivityTrackingScreen extends ConsumerWidget {
   }
 
   // --- UI Components ---
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.white.withOpacity(0.9),
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      title: Row(
-        children: const [
-          Icon(Icons.signal_cellular_alt, color: Colors.black, size: 18),
-          SizedBox(width: 4),
-          Icon(Icons.wifi, color: Colors.black, size: 18),
-          SizedBox(width: 4),
-          Icon(Icons.battery_full, color: Colors.black, size: 20),
-        ],
-      ),
-      actions: const [
-        Padding(
-          padding: EdgeInsets.only(right: 24),
-          child: Text(
-            '9:41',
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildContent(BuildContext context, ActivityData data) {
     return SingleChildScrollView(
