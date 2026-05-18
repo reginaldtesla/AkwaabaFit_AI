@@ -5,10 +5,10 @@ import 'package:mobile/features/ai_scanner/presentation/ai_scanner_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
-import 'package:mobile/features/safety/presentation/emergency_sos_screen.dart';
-import 'package:mobile/features/placeholders/presentation/placeholder_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
+import 'package:mobile/shared/profile/profile_repository.dart';
+import 'package:mobile/features/safety/data/safety_environment_advice.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 
 // =====================================================================
@@ -17,79 +17,208 @@ import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 
 class SafetyHubData {
   final String userName;
-  final int? feelingRating;
-  final double currentHydration;
-  final double hydrationGoal;
   final String location;
   final int temperatureCelsius;
 
   SafetyHubData({
     required this.userName,
-    this.feelingRating,
-    required this.currentHydration,
-    required this.hydrationGoal,
     required this.location,
     required this.temperatureCelsius,
   });
-
-  SafetyHubData copyWith({
-    String? userName,
-    int? feelingRating,
-    double? currentHydration,
-    double? hydrationGoal,
-    String? location,
-    int? temperatureCelsius,
-  }) {
-    return SafetyHubData(
-      userName: userName ?? this.userName,
-      feelingRating: feelingRating ?? this.feelingRating,
-      currentHydration: currentHydration ?? this.currentHydration,
-      hydrationGoal: hydrationGoal ?? this.hydrationGoal,
-      location: location ?? this.location,
-      temperatureCelsius: temperatureCelsius ?? this.temperatureCelsius,
-    );
-  }
 }
 
 final safetyHubProvider =
     StateNotifierProvider<SafetyHubNotifier, AsyncValue<SafetyHubData>>((ref) {
-      return SafetyHubNotifier();
+      return SafetyHubNotifier(ref);
     });
 
 class SafetyHubNotifier extends StateNotifier<AsyncValue<SafetyHubData>> {
-  SafetyHubNotifier() : super(const AsyncValue.loading()) {
-    _loadInitialData();
+  SafetyHubNotifier(this._ref) : super(const AsyncValue.loading()) {
+    void applyDashboard(AsyncValue<DashboardData> next) {
+      next.when(
+        data: (dashboard) {
+          state = AsyncValue.data(
+            SafetyHubData(
+              userName: dashboard.userName,
+              location: dashboard.location,
+              temperatureCelsius: dashboard.tempCelsius.toInt(),
+            ),
+          );
+        },
+        loading: () {
+          if (!state.hasValue) {
+            state = const AsyncValue.loading();
+          }
+        },
+        error: (err, stack) {
+          state = const AsyncValue.loading();
+          Future.microtask(() async {
+            try {
+              final local =
+                  await _ref.read(profileRepositoryProvider).readLocalProfile();
+              if (local == null) {
+                state = AsyncValue.error(err, stack);
+                return;
+              }
+              state = AsyncValue.data(
+                SafetyHubData(
+                  userName: (local['name'] ?? 'Member').toString(),
+                  location: 'Offline — weather unavailable',
+                  temperatureCelsius: 0,
+                ),
+              );
+            } catch (_) {
+              state = AsyncValue.error(err, stack);
+            }
+          });
+        },
+      );
+    }
+
+    // Same `/dashboard` payload as the home screen — weather stays in sync.
+    _ref.listen<AsyncValue<DashboardData>>(
+      dashboardDataProvider,
+      (_, next) => applyDashboard(next),
+      fireImmediately: true,
+    );
   }
 
-  Future<void> _loadInitialData() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    state = AsyncValue.data(
-      SafetyHubData(
-        userName: 'Alex',
-        feelingRating: null,
-        currentHydration: 2.4,
-        hydrationGoal: 3.5,
-        location: 'Accra, GH',
-        temperatureCelsius: 32,
+  final Ref _ref;
+}
+
+/// Visual treatment for the environment temperature strip from OpenWeather-style `main`.
+class _WeatherBannerLook {
+  const _WeatherBannerLook({
+    required this.gradient,
+    required this.icon,
+    required this.iconTint,
+  });
+
+  final Gradient gradient;
+  final IconData icon;
+  final Color iconTint;
+}
+
+_WeatherBannerLook _weatherBannerLook(String? weatherMain) {
+  final key = (weatherMain ?? '').toLowerCase().trim();
+
+  if (key.contains('thunder')) {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFD7CCC8),
+          Color(0xFFB0BEC5),
+        ],
       ),
+      icon: Icons.thunderstorm_rounded,
+      iconTint: Color(0xFF5D4037),
+    );
+  }
+  if (key.contains('drizzle') || key == 'rain') {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFDDEAE5),
+          Color(0xFFC5D9D0),
+        ],
+      ),
+      icon: Icons.water_drop_rounded,
+      iconTint: Color(0xFF1B5E20),
+    );
+  }
+  if (key.contains('snow') || key.contains('sleet')) {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFECEFF1),
+          Color(0xFFDDE8E4),
+        ],
+      ),
+      icon: Icons.ac_unit_rounded,
+      iconTint: Color(0xFF455A64),
+    );
+  }
+  if (key.contains('mist') ||
+      key.contains('fog') ||
+      key.contains('haze') ||
+      key.contains('smoke') ||
+      key.contains('dust') ||
+      key.contains('sand') ||
+      key.contains('ash')) {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFE8EBE9),
+          Color(0xFFD5DDD8),
+        ],
+      ),
+      icon: Icons.blur_on_rounded,
+      iconTint: Color(0xFF546E7A),
+    );
+  }
+  if (key.contains('cloud')) {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFEEF1EE),
+          Color(0xFFDDE6DD),
+        ],
+      ),
+      icon: Icons.cloud_rounded,
+      iconTint: Color(0xFF455A64),
+    );
+  }
+  if (key.contains('clear')) {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFFFFDE7),
+          Color(0xFFE8F5E9),
+        ],
+      ),
+      icon: Icons.wb_sunny_rounded,
+      iconTint: Color(0xFFF57F17),
+    );
+  }
+  if (key.contains('tornado') || key.contains('squall')) {
+    return _WeatherBannerLook(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFFB0BEC5),
+          Color(0xFF90A4AE),
+        ],
+      ),
+      icon: Icons.air_rounded,
+      iconTint: Color(0xFF37474F),
     );
   }
 
-  void setFeelingRating(int rating) {
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncValue.data(current.copyWith(feelingRating: rating));
-  }
-
-  void logWater(double amount) {
-    final current = state.value;
-    if (current == null) return;
-    final newAmount = (current.currentHydration + amount).clamp(
-      0.0,
-      current.hydrationGoal,
-    );
-    state = AsyncValue.data(current.copyWith(currentHydration: newAmount));
-  }
+  return _WeatherBannerLook(
+    gradient: const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color(0xFFF2F8F2),
+        Color(0xFFE8F5E9),
+      ],
+    ),
+    icon: Icons.wb_cloudy_rounded,
+    iconTint: Color(0xFF1A5D1A),
+  );
 }
 
 // =====================================================================
@@ -99,14 +228,13 @@ class SafetyHubNotifier extends StateNotifier<AsyncValue<SafetyHubData>> {
 class HealthSafetyHubScreen extends ConsumerWidget {
   const HealthSafetyHubScreen({super.key});
 
-  // Brand Colors
-  static const Color primary = Color(0xFF4A90E2);
-  static const Color softBlue = Color(0xFFF0F7FF);
-  static const Color calmBlue = Color(0xFFD1E9FF);
-  static const Color background = Color(0xFFF9FBFE);
+  // Brand colors — match Dashboard (`primary` green, no blue accent).
+  static const Color primary = Color(0xFF1A5D1A);
+  static const Color softTint = Color(0xFFF2F8F2);
+  static const Color calmTint = Color(0xFFDCEADC);
+  static const Color background = Color(0xFFF9FAFB);
   static const Color textMain = Color(0xFF334155);
   static const Color textLight = Color(0xFF64748B);
-  static const Color dashboardGreen = Color(0xFF1A5D1A);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -119,7 +247,14 @@ class HealthSafetyHubScreen extends ConsumerWidget {
         loading: () =>
             const Center(child: CircularProgressIndicator(color: primary)),
         error: (err, stack) => Center(child: Text('Error: $err')),
-        data: (data) => _buildContent(context, ref, data),
+        data: (data) => RefreshIndicator(
+          color: primary,
+          onRefresh: () async {
+            ref.invalidate(dashboardDataProvider);
+            await ref.read(dashboardDataProvider.future);
+          },
+          child: _buildContent(context, ref, data),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
@@ -147,7 +282,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: dashboardGreen,
+                  color: primary,
                 ),
               ),
             ),
@@ -157,7 +292,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                   MaterialPageRoute(builder: (_) => const AiScannerScreen()),
                 );
               },
-              backgroundColor: dashboardGreen,
+              backgroundColor: primary,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(30),
@@ -212,87 +347,21 @@ class HealthSafetyHubScreen extends ConsumerWidget {
       backgroundColor: background.withOpacity(0.8),
       elevation: 0,
       scrolledUnderElevation: 0,
-      toolbarHeight: 80,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Safety Hub',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: textMain,
-              letterSpacing: -0.5,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.verified_user, color: primary, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                'Your Personal Health Guide',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: primary,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 24),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.blueGrey.shade100),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.notifications_outlined,
-                  color: textLight,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
-                  ],
-                  image: const DecorationImage(
-                    image: NetworkImage('https://i.pravatar.cc/150?img=12'),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-            ],
-          ),
+      title: Text(
+        'Safety Hub',
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          color: textMain,
+          letterSpacing: -0.5,
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildContent(BuildContext context, WidgetRef ref, SafetyHubData data) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
       child: Column(
         children: [
@@ -300,13 +369,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           _buildTeleDieteticsButton(context),
           const SizedBox(height: 24),
-          _buildWellnessCheck(ref, data),
-          const SizedBox(height: 24),
-          _buildHydrationCard(ref, data),
-          const SizedBox(height: 24),
-          _buildEnvironmentCard(data),
-          const SizedBox(height: 32),
-          _buildEmergencyButton(context),
+          _buildEnvironmentCard(ref, data),
           const SizedBox(height: 24),
           Text(
             'This guide provides supportive health information. Always consult your doctor for medical advice.',
@@ -329,7 +392,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.blueGrey.shade50),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
@@ -344,9 +407,9 @@ class HealthSafetyHubScreen extends ConsumerWidget {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: softBlue,
+              color: softTint,
               shape: BoxShape.circle,
-              border: Border.all(color: calmBlue.withOpacity(0.5)),
+              border: Border.all(color: calmTint.withOpacity(0.5)),
             ),
             child: const Icon(Icons.spa, color: primary, size: 28),
           ),
@@ -365,8 +428,12 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Let\'s stay comfortable and hydrated today.',
-                  style: GoogleFonts.plusJakartaSans(fontSize: 13, color: textLight),
+                  'See outdoor guidance or book Tele‑Dietetics.',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: textLight,
+                  ),
                 ),
               ],
             ),
@@ -412,251 +479,25 @@ class HealthSafetyHubScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildWellnessCheck(WidgetRef ref, SafetyHubData data) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'WELLNESS CHECK',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: textLight,
-                letterSpacing: 1.0,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: softBlue,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: calmBlue.withOpacity(0.5)),
-              ),
-              child: Text(
-                'DAILY GUIDE',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: primary,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: _cardDecoration(),
-          child: Column(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: softBlue,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: calmBlue.withOpacity(0.5)),
-                    ),
-                    child: const Icon(Icons.favorite, color: primary),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'How are you feeling?',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: textMain,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Checking in helps tailor your day.',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 13,
-                            color: textLight,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(5, (index) {
-                  final rating = index + 1;
-                  final isSelected = data.feelingRating == rating;
-                  return GestureDetector(
-                    onTap: () =>
-                        ref.read(safetyHubProvider.notifier).setFeelingRating(rating),
-                    child: Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? softBlue
-                            : Colors.blueGrey.shade50.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected ? primary : Colors.blueGrey.shade100,
-                          width: isSelected ? 2 : 1,
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: primary.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ]
-                            : [],
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        rating == 5 ? '5+' : '$rating',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: isSelected ? primary : textLight,
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ],
-          ),
-        ),
-      ],
+  Widget _buildEnvironmentCard(WidgetRef ref, SafetyHubData data) {
+    // Read weather from the same provider as the dashboard — avoids drift from
+    // StateNotifier listen timing (Hub showed 30°C vs dashboard 29°C).
+    final dashSnapshot = ref.watch(dashboardDataProvider).valueOrNull;
+    final tempDisplay = dashSnapshot != null
+        ? dashSnapshot.tempCelsius.toInt()
+        : data.temperatureCelsius;
+    final locationDisplay =
+        dashSnapshot?.location ?? data.location;
+
+    final advice = resolveSafetyEnvironmentAdvice(
+      tempCelsius:
+          dashSnapshot?.tempCelsius ?? data.temperatureCelsius.toDouble(),
+      weatherMain: dashSnapshot?.weatherMain,
+      weatherDescription: dashSnapshot?.weatherDescription,
+      airQualityAqi: dashSnapshot?.airQualityAqi,
     );
-  }
+    final weatherBanner = _weatherBannerLook(dashSnapshot?.weatherMain);
 
-  Widget _buildHydrationCard(WidgetRef ref, SafetyHubData data) {
-    final progress = data.hydrationGoal <= 0
-        ? 0.0
-        : (data.currentHydration / data.hydrationGoal);
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: softBlue,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: calmBlue.withOpacity(0.5)),
-                ),
-                child: const Icon(Icons.water_drop, color: primary),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'CURRENT PROGRESS',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: primary,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                  RichText(
-                    text: TextSpan(
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: textMain,
-                      ),
-                      children: [
-                        TextSpan(text: '${data.currentHydration.toStringAsFixed(1)}L '),
-                        TextSpan(
-                          text: '/ ${data.hydrationGoal}L',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 14,
-                            fontWeight: FontWeight.normal,
-                            color: textLight,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Stay Fluid, Stay Energized',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: textMain,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Small, frequent sips keep you steady.',
-            style: GoogleFonts.plusJakartaSans(fontSize: 13, color: textLight, height: 1.4),
-          ),
-          const SizedBox(height: 20),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 10,
-              backgroundColor: Colors.blueGrey.shade100,
-              color: primary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: () => ref.read(safetyHubProvider.notifier).logWater(0.25),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 4,
-                shadowColor: primary.withOpacity(0.4),
-              ),
-              child: Text(
-                'Log a glass of water',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEnvironmentCard(SafetyHubData data) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -674,14 +515,14 @@ class HealthSafetyHubScreen extends ConsumerWidget {
             ),
             Row(
               children: [
-                Icon(Icons.light_mode, color: Colors.amber.shade600, size: 16),
+                Icon(advice.headlineIcon, color: advice.headlineColor, size: 16),
                 const SizedBox(width: 4),
                 Text(
-                  'High Intensity',
+                  advice.headlineLabel,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Colors.amber.shade600,
+                    color: advice.headlineColor,
                   ),
                 ),
               ],
@@ -695,42 +536,54 @@ class HealthSafetyHubScreen extends ConsumerWidget {
             children: [
               SizedBox(
                 height: 180,
-                child: Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius:
-                            const BorderRadius.vertical(top: Radius.circular(32)),
-                        color: Colors.blueGrey.shade100,
+                child: ClipRRect(
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(32)),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: weatherBanner.gradient,
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      bottom: 20,
-                      left: 24,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            data.location.toUpperCase(),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: primary,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                          Text(
-                            '${data.temperatureCelsius}°C',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w900,
-                              color: textMain,
-                            ),
-                          ),
-                        ],
+                      Positioned(
+                        right: -12,
+                        top: 16,
+                        child: Icon(
+                          weatherBanner.icon,
+                          size: 152,
+                          color: weatherBanner.iconTint.withOpacity(0.2),
+                        ),
                       ),
-                    ),
-                  ],
+                      Positioned(
+                        bottom: 20,
+                        left: 24,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              locationDisplay.toUpperCase(),
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: primary,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                            Text(
+                              '$tempDisplay°C',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                color: textMain,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Padding(
@@ -740,12 +593,12 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: softBlue,
+                        color: softTint,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: calmBlue.withOpacity(0.3)),
+                        border: Border.all(color: calmTint.withOpacity(0.35)),
                       ),
                       child: Text(
-                        '"The sun is quite strong today. Wearing light cotton and staying in the shade will keep you feeling refreshed."',
+                        advice.quote,
                         textAlign: TextAlign.center,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
@@ -759,9 +612,19 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                     const SizedBox(height: 24),
                     Row(
                       children: [
-                        Expanded(child: _buildAdvicePill(Icons.checkroom, 'Cotton Wear')),
+                        Expanded(
+                          child: _buildAdvicePill(
+                            advice.tipAIcon,
+                            advice.tipALabel,
+                          ),
+                        ),
                         const SizedBox(width: 16),
-                        Expanded(child: _buildAdvicePill(Icons.umbrella, 'Seek Shade')),
+                        Expanded(
+                          child: _buildAdvicePill(
+                            advice.tipBIcon,
+                            advice.tipBLabel,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -778,9 +641,9 @@ class HealthSafetyHubScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade50.withOpacity(0.8),
+        color: Colors.grey.shade100.withOpacity(0.85),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blueGrey.shade100),
+        border: Border.all(color: Colors.grey.shade300),
       ),
       child: Column(
         children: [
@@ -800,74 +663,11 @@ class HealthSafetyHubScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmergencyButton(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const EmergencySosScreen(),
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: Colors.pink.shade50),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 24,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.pink.shade50,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.pink.shade100.withOpacity(0.5)),
-              ),
-              child: Icon(Icons.support_agent, color: Colors.pink.shade500, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Emergency Support',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: textMain,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Instant alert to your care network',
-                    style: GoogleFonts.plusJakartaSans(fontSize: 12, color: textLight),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: Colors.blueGrey.shade300),
-          ],
-        ),
-      ),
-    );
-  }
-
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(32),
-      border: Border.all(color: Colors.blueGrey.shade50),
+      border: Border.all(color: Colors.grey.shade200),
       boxShadow: [
         BoxShadow(
           color: Colors.black.withOpacity(0.03),

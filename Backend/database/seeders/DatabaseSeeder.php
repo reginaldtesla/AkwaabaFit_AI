@@ -19,7 +19,11 @@ class DatabaseSeeder extends Seeder
 
         User::factory()->create([
             'name' => 'Test User',
+            'username' => 'testuser',
+            'phone' => '233245550192',
             'email' => 'test@example.com',
         ]);
+
+        $this->call(FoodNutritionItemSeeder::class);
     }
 }

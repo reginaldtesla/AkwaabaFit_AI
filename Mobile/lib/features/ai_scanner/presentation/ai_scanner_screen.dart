@@ -5,25 +5,93 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile/features/ai_scanner/data/food_detector_provider.dart';
+import 'package:mobile/features/ai_scanner/data/food_nutrition_info.dart';
+import 'package:mobile/features/ai_scanner/data/hybrid_nutrition_provider.dart';
+import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
+import 'package:mobile/shared/nutrition/meal_macro_row.dart';
+import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 
 // =====================================================================
-// 1. STATE MANAGEMENT & MOCK AI LOGIC
+// 1. STATE MANAGEMENT — offline v1 YOLO (ONNX on device)
 // =====================================================================
 
 class AiScanResult {
   final String name;
   final int calories;
+  final int proteinG;
+  final int carbsG;
+  final int fatG;
   final double ironMg;
   final int folateMcg;
   final String safetyStatus;
+  final double confidence;
+  final List<String> alternateLabels;
+  final String? insightMessage;
+
+  /// bundled | cache | server
+  final String nutritionSource;
+  final String portionLabel;
+  final bool isGenericFallback;
+  final bool isRefiningNutrition;
+
+  /// Set after [NutritionRepository.logMeal] succeeds (triggers history navigation).
+  final bool mealSaved;
 
   AiScanResult({
     required this.name,
     required this.calories,
+    required this.proteinG,
+    required this.carbsG,
+    required this.fatG,
     required this.ironMg,
     required this.folateMcg,
     required this.safetyStatus,
+    this.confidence = 0,
+    this.alternateLabels = const [],
+    this.insightMessage,
+    this.nutritionSource = 'bundled',
+    this.portionLabel = '1 serving',
+    this.isGenericFallback = false,
+    this.isRefiningNutrition = false,
+    this.mealSaved = false,
   });
+
+  AiScanResult copyWith({
+    String? name,
+    int? calories,
+    int? proteinG,
+    int? carbsG,
+    int? fatG,
+    double? ironMg,
+    int? folateMcg,
+    String? safetyStatus,
+    String? insightMessage,
+    String? nutritionSource,
+    String? portionLabel,
+    bool? isGenericFallback,
+    bool? isRefiningNutrition,
+    bool? mealSaved,
+  }) {
+    return AiScanResult(
+      name: name ?? this.name,
+      calories: calories ?? this.calories,
+      proteinG: proteinG ?? this.proteinG,
+      carbsG: carbsG ?? this.carbsG,
+      fatG: fatG ?? this.fatG,
+      ironMg: ironMg ?? this.ironMg,
+      folateMcg: folateMcg ?? this.folateMcg,
+      safetyStatus: safetyStatus ?? this.safetyStatus,
+      confidence: confidence,
+      alternateLabels: alternateLabels,
+      insightMessage: insightMessage ?? this.insightMessage,
+      nutritionSource: nutritionSource ?? this.nutritionSource,
+      portionLabel: portionLabel ?? this.portionLabel,
+      isGenericFallback: isGenericFallback ?? this.isGenericFallback,
+      isRefiningNutrition: isRefiningNutrition ?? this.isRefiningNutrition,
+      mealSaved: mealSaved ?? this.mealSaved,
+    );
+  }
 }
 
 final aiScannerProvider =
@@ -40,25 +108,152 @@ class AiScannerNotifier extends AsyncNotifier<AiScanResult?> {
   Future<void> scanFood({XFile? image}) async {
     state = const AsyncValue.loading();
     try {
-      // TODO: In production, use [image] (or captured camera image) and send to Laravel / or run TFLite offline.
-      await Future.delayed(const Duration(seconds: 2));
+      if (image == null || image.path.isEmpty) {
+        throw StateError('No image to scan. Take a photo or pick from gallery.');
+      }
+
+      final detector = await ref.read(foodDetectorProvider.future);
+      final detections = await detector.detectFromFile(image.path);
+
+      if (detections.isEmpty) {
+        throw StateError(
+          'No food detected. Try better lighting and center the plate in the frame.',
+        );
+      }
+
+      final top = detections.first;
+      final hybrid = await ref.read(hybridNutritionProvider.future);
+      final nutrition = await hybrid.resolve(top.className);
+      final alternates = detections.skip(1).take(3).map((d) {
+        return d.className
+            .replaceAll('-', ' ')
+            .split(' ')
+            .map((w) =>
+                w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+            .join(' ');
+      }).toList();
+
+      var result = _resultFromNutrition(
+        nutrition,
+        confidence: top.confidence,
+        alternates: alternates,
+      );
 
       state = AsyncValue.data(
-        AiScanResult(
-          name: 'Grilled Salmon Salad',
-          calories: 482,
-          ironMg: 4.2,
-          folateMcg: 112,
-          safetyStatus: 'Bio-Optimal',
-        ),
+        result.copyWith(isRefiningNutrition: true),
       );
-    } catch (e) {
-      state = AsyncValue.error('Failed to analyze image.', StackTrace.current);
+
+      final mealPayload = _mealPayload(
+        result: result,
+        imagePath: image.path,
+        topClassName: top.className,
+        topClassIndex: top.classIndex,
+        alternates: alternates,
+      );
+
+      final repo = ref.read(nutritionRepositoryProvider);
+      final ids = await repo.logMeal(mealPayload);
+      ref.invalidate(nutritionHistoryProvider);
+
+      state = AsyncValue.data(result.copyWith(mealSaved: true));
+
+      final refreshed = await hybrid.refreshFromServer(top.className);
+      if (refreshed != null &&
+          refreshed.isMeaningfullyDifferentFrom(nutrition)) {
+        result = _resultFromNutrition(
+          refreshed,
+          confidence: top.confidence,
+          alternates: alternates,
+        );
+        final updatedPayload = _mealPayload(
+          result: result,
+          imagePath: image.path,
+          topClassName: top.className,
+          topClassIndex: top.classIndex,
+          alternates: alternates,
+        );
+        await repo.updateLoggedMeal(
+          mealCacheId: ids.mealCacheId,
+          outboxId: ids.outboxId,
+          meal: updatedPayload,
+        );
+        if (await hybrid.isOnline()) {
+          await repo.syncPendingIfAny();
+        }
+        ref.invalidate(nutritionHistoryProvider);
+        state = AsyncValue.data(result.copyWith(mealSaved: true));
+      }
+    } catch (e, st) {
+      final raw = e.toString();
+      final message = e is StateError
+          ? e.message
+          : raw.contains('Opset') || raw.contains('onnxruntime')
+              ? 'Food scanner model failed to load. Stop the app, run flutter clean, then flutter run again. If it persists, reinstall the app.'
+              : 'Failed to analyze image. $raw';
+      state = AsyncValue.error(message, st);
     }
   }
 
   void clearScan() {
     state = const AsyncValue.data(null);
+  }
+
+  AiScanResult _resultFromNutrition(
+    FoodNutritionInfo nutrition, {
+    required double confidence,
+    required List<String> alternates,
+  }) {
+    return AiScanResult(
+      name: nutrition.displayName,
+      calories: nutrition.calories,
+      proteinG: nutrition.proteinG,
+      carbsG: nutrition.carbsG,
+      fatG: nutrition.fatG,
+      ironMg: nutrition.ironMg,
+      folateMcg: nutrition.folateMcg,
+      safetyStatus: nutrition.safetyStatus,
+      insightMessage: nutrition.insightMessage,
+      nutritionSource: nutrition.source,
+      portionLabel: nutrition.portionLabel,
+      isGenericFallback: nutrition.isGenericFallback,
+      confidence: confidence,
+      alternateLabels: alternates,
+    );
+  }
+
+  Map<String, dynamic> _mealPayload({
+    required AiScanResult result,
+    required String imagePath,
+    required String topClassName,
+    required int topClassIndex,
+    required List<String> alternates,
+  }) {
+    return {
+      'eaten_at': DateTime.now().toIso8601String(),
+      'meal_type': null,
+      'name': result.name,
+      'calories': result.calories,
+      'protein_g': result.proteinG,
+      'carbs_g': result.carbsG,
+      'fat_g': result.fatG,
+      'safety_status': result.safetyStatus,
+      'insight_message': null,
+      'image_url': null,
+      'source': 'scan',
+      'meta': {
+        'iron_mg': result.ironMg,
+        'folate_mcg': result.folateMcg,
+        'image_path': imagePath,
+        'model': 'food_v1_onnx',
+        'confidence': result.confidence,
+        'class_id': topClassIndex,
+        'class_name': topClassName,
+        'alternates': alternates,
+        'nutrition_source': result.nutritionSource,
+        'portion_label': result.portionLabel,
+        'is_generic_fallback': result.isGenericFallback,
+      },
+    };
   }
 }
 
@@ -84,7 +279,16 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   bool _isFlashOn = false;
+  bool _navigatedToHistoryAfterSave = false;
   final _imagePicker = ImagePicker();
+
+  void _openNutritionHistory() {
+    if (!mounted) return;
+    ref.read(aiScannerProvider.notifier).clearScan();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
+    );
+  }
 
   @override
   void initState() {
@@ -146,9 +350,49 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
     }
   }
 
+  Future<void> _captureAndScan() async {
+    final controller = _cameraController;
+    if (!_isCameraInitialized || controller == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera not ready. Use gallery or try again.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final XFile photo = await controller.takePicture();
+      if (!mounted) return;
+      await ref.read(aiScannerProvider.notifier).scanFood(image: photo);
+    } catch (e) {
+      debugPrint('Capture Error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not capture photo.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scanState = ref.watch(aiScannerProvider);
+
+    ref.listen<AsyncValue<AiScanResult?>>(aiScannerProvider, (prev, next) {
+      if (next.isLoading) {
+        _navigatedToHistoryAfterSave = false;
+        return;
+      }
+      final saved = next.value?.mealSaved == true;
+      final wasSaved = prev?.value?.mealSaved == true;
+      if (saved && !wasSaved && !_navigatedToHistoryAfterSave) {
+        _navigatedToHistoryAfterSave = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _openNutritionHistory();
+        });
+      }
+    });
 
     return Scaffold(
       backgroundColor: slate900,
@@ -189,15 +433,45 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
 
                 // Loading Spinner
                 if (scanState.isLoading)
-                  const Expanded(
+                  Expanded(
                     child: Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(color: Colors.white),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Analyzing…',
+                            style: GoogleFonts.inter(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                if (scanState.hasError)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Center(
+                        child: Text(
+                          scanState.error.toString(),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
 
                 // AI Result Card
                 if (scanState.value != null && !scanState.isLoading)
-                  _buildResultCard(scanState.value!),
+                  _buildResultCard(context, ref, scanState.value!),
 
                 // Bottom Capture Controls
                 _buildBottomControls(scanState),
@@ -343,7 +617,11 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
     );
   }
 
-  Widget _buildResultCard(AiScanResult result) {
+  Widget _buildResultCard(
+    BuildContext context,
+    WidgetRef ref,
+    AiScanResult result,
+  ) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -378,10 +656,10 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.verified, color: secondaryBlue, size: 16),
+                          Icon(Icons.camera_alt, color: secondaryBlue, size: 16),
                           const SizedBox(width: 6),
                           Text(
-                            'AI VERIFIED ANALYSIS',
+                            'AI FOOD DETECTION',
                             style: GoogleFonts.inter(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -402,6 +680,46 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (result.confidence > 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(result.confidence * 100).toStringAsFixed(0)}% match • Per ${result.portionLabel}',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade500,
+                          ),
+                        ),
+                      ],
+                      if (result.isRefiningNutrition) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Updating nutrition from server…',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: Colors.blueGrey.shade400,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      MealMacroRow(
+                        proteinG: result.proteinG,
+                        carbsG: result.carbsG,
+                        fatG: result.fatG,
+                        fontSize: 13,
+                      ),
+                      if (result.alternateLabels.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Also: ${result.alternateLabels.join(', ')}',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            color: Colors.blueGrey.shade400,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -490,10 +808,16 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
                 Expanded(
                   flex: 2,
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Meal logged successfully!')),
-                      );
+                    onPressed: () async {
+                      try {
+                        await ref
+                            .read(nutritionRepositoryProvider)
+                            .syncPendingIfAny();
+                        ref.invalidate(nutritionHistoryProvider);
+                      } catch (_) {
+                        ref.invalidate(nutritionHistoryProvider);
+                      }
+                      _openNutritionHistory();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: slate900,
@@ -611,7 +935,7 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
           GestureDetector(
             onTap: () {
               if (!isScanning) {
-                ref.read(aiScannerProvider.notifier).scanFood();
+                _captureAndScan();
               }
             },
             child: Container(

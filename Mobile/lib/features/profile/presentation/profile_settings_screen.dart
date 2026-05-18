@@ -1,12 +1,29 @@
-import 'package:flutter/cupertino.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
+import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
+import 'package:mobile/features/telehealth/presentation/advisor_advice_inbox_screen.dart';
+import 'package:mobile/features/telehealth/presentation/dietitian_application_screen.dart';
+import 'package:mobile/features/auth/presentation/auth_screen.dart';
+import 'package:mobile/features/auth/presentation/splash_screen.dart';
+import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
+import 'package:mobile/features/fitness/data/steps_today_provider.dart';
+import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
+import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS
@@ -18,8 +35,6 @@ class UserProfile {
   final String avatarUrl;
   final double weightKg;
   final int heightCm;
-  final String bloodType;
-  final bool isBiometricEnabled;
 
   UserProfile({
     required this.name,
@@ -27,8 +42,6 @@ class UserProfile {
     required this.avatarUrl,
     required this.weightKg,
     required this.heightCm,
-    required this.bloodType,
-    required this.isBiometricEnabled,
   });
 
   UserProfile copyWith({
@@ -37,8 +50,6 @@ class UserProfile {
     String? avatarUrl,
     double? weightKg,
     int? heightCm,
-    String? bloodType,
-    bool? isBiometricEnabled,
   }) {
     return UserProfile(
       name: name ?? this.name,
@@ -46,45 +57,157 @@ class UserProfile {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       weightKg: weightKg ?? this.weightKg,
       heightCm: heightCm ?? this.heightCm,
-      bloodType: bloodType ?? this.bloodType,
-      isBiometricEnabled: isBiometricEnabled ?? this.isBiometricEnabled,
     );
   }
 }
 
-final profileProvider =
-    StateNotifierProvider<ProfileNotifier, AsyncValue<UserProfile>>((ref) {
-  return ProfileNotifier();
+final profileProvider = StateNotifierProvider.autoDispose<
+    ProfileNotifier, AsyncValue<UserProfile>>((ref) {
+  return ProfileNotifier(ref);
+});
+
+final stepGoalProvider = FutureProvider<int?>((ref) async {
+  final repo = ref.read(profileRepositoryProvider);
+  final current = await repo.readLocalProfile();
+  final v = current?['step_goal'];
+  if (v is int) return v;
+  return int.tryParse((v ?? '').toString());
+});
+
+final dailyCaloriesGoalProvider = FutureProvider<int?>((ref) async {
+  final repo = ref.read(profileRepositoryProvider);
+  final current = await repo.readLocalProfile();
+  final v = current?['daily_calories_target'];
+  if (v is int) return v;
+  return int.tryParse((v ?? '').toString());
+});
+
+final avatarUrlProvider = FutureProvider<String?>((ref) async {
+  final repo = ref.read(profileRepositoryProvider);
+  final current = await repo.readLocalProfile();
+  final v = current?['avatar_url'] ?? current?['avatarUrl'];
+  final s = (v ?? '').toString().trim();
+  return s.isEmpty ? null : s;
+});
+
+final genderProvider = FutureProvider<String?>((ref) async {
+  final repo = ref.read(profileRepositoryProvider);
+  final current = await repo.readLocalProfile();
+  final v = current?['gender'];
+  final s = (v ?? '').toString().trim();
+  return s.isEmpty ? null : s;
+});
+
+final isNutritionAdvisorProvider = FutureProvider<bool>((ref) async {
+  const storage = FlutterSecureStorage();
+  final token = await storage.read(key: 'sanctum_token');
+  if (token == null || token.isEmpty) return false;
+
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: AppConfig.apiBaseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ),
+  );
+
+  try {
+    final resp = await dio.get('/user');
+    final raw = resp.data;
+    final map = (raw is Map) ? raw.map((k, v) => MapEntry(k.toString(), v)) : const <String, dynamic>{};
+    return map['is_nutrition_advisor'] == true || map['isNutritionAdvisor'] == true;
+  } catch (_) {
+    return false;
+  }
 });
 
 class ProfileNotifier extends StateNotifier<AsyncValue<UserProfile>> {
-  ProfileNotifier() : super(const AsyncValue.loading()) {
+  ProfileNotifier(this.ref) : super(const AsyncValue.loading()) {
     _loadProfile();
   }
 
+  final Ref ref;
+
   Future<void> _loadProfile() async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    state = AsyncValue.data(
-      UserProfile(
-        name: 'Amara Okafor',
-        membershipId: '884-012',
-        avatarUrl: 'https://i.pravatar.cc/300?img=25',
-        weightKg: 64.5,
-        heightCm: 168,
-        bloodType: 'O+',
-        isBiometricEnabled: true,
-      ),
+    final repo = ref.read(profileRepositoryProvider);
+    Map<String, dynamic>? local;
+
+    try {
+      local = await repo.readLocalProfile();
+
+      if (local != null) {
+        state = AsyncValue.data(_userProfileFromCache(local));
+      } else {
+        state = const AsyncValue.loading();
+      }
+
+      await repo.syncPendingIfAny();
+      final remote = await repo.fetchRemoteAndCache();
+
+      if (remote != null) {
+        state = AsyncValue.data(_userProfileFromCache(remote));
+      } else if (local == null) {
+        state = AsyncValue.data(_fallbackUserProfile());
+      }
+    } catch (e, st) {
+      if (local == null && state.valueOrNull == null) {
+        state = AsyncValue.error(e, st);
+      }
+    }
+  }
+
+  static UserProfile _userProfileFromCache(Map<String, dynamic> u) {
+    final gender = (u['gender'] ?? '').toString().toLowerCase();
+    final avatarRaw =
+        (u['avatar_url'] ?? u['avatarUrl'] ?? '').toString().trim();
+    final avatarUrl = avatarRaw.isNotEmpty
+        ? AppConfig.normalizeUrlForDevice(avatarRaw)
+        : (gender == 'female'
+            ? 'https://i.pravatar.cc/150?img=47'
+            : gender == 'male'
+                ? 'https://i.pravatar.cc/150?img=12'
+                : 'https://i.pravatar.cc/150?img=5');
+
+    final weight = u['weight'];
+    final height = u['height'];
+    final weightKg = weight is num
+        ? weight.toDouble()
+        : double.tryParse('$weight') ?? 0.0;
+    final heightCm = height is int
+        ? height
+        : int.tryParse('$height') ?? 0;
+
+    final id = u['id'];
+    final membershipId = id != null ? '#${id.toString()}' : '—';
+
+    return UserProfile(
+      name: (u['name'] ?? 'Member').toString(),
+      membershipId: membershipId,
+      avatarUrl: avatarUrl,
+      weightKg: weightKg > 0 ? weightKg : 0,
+      heightCm: heightCm > 0 ? heightCm : 0,
     );
   }
 
-  void toggleBiometrics(bool value) {
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncValue.data(current.copyWith(isBiometricEnabled: value));
+  static UserProfile _fallbackUserProfile() {
+    return UserProfile(
+      name: 'Member',
+      membershipId: '—',
+      avatarUrl: 'https://i.pravatar.cc/150?img=5',
+      weightKg: 0,
+      heightCm: 0,
+    );
   }
 
+  Future<void> reloadFromRepo() => _loadProfile();
+
   Future<void> saveProfile() async {
-    debugPrint('Saving profile to backend...');
+    await ref.read(profileRepositoryProvider).syncPendingIfAny();
+    await reloadFromRepo();
   }
 }
 
@@ -140,7 +263,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
         );
         return;
       case AppTab.profile:
@@ -159,20 +282,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
         preferredSize: const Size.fromHeight(1),
         child: Container(color: const Color(0xFFF0F0F0), height: 1),
       ),
-      leadingWidth: 90,
-      leading: TextButton.icon(
-        onPressed: () => Navigator.pop(context),
-        icon: Icon(Icons.chevron_left, color: primary, size: 28),
-        label: Text(
-          'Back',
-          style: GoogleFonts.inter(
-            color: primary,
-            fontSize: 17,
-            fontWeight: FontWeight.w400,
-          ),
-        ),
-        style: TextButton.styleFrom(padding: EdgeInsets.zero),
-      ),
+      automaticallyImplyLeading: false,
       title: Text(
         'Profile Settings',
         style: GoogleFonts.inter(
@@ -183,19 +293,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
         ),
       ),
       centerTitle: true,
-      actions: [
-        TextButton(
-          onPressed: () => ref.read(profileProvider.notifier).saveProfile(),
-          child: Text(
-            'Save',
-            style: GoogleFonts.inter(
-              color: primary,
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
+      actions: const [],
     );
   }
 
@@ -203,20 +301,18 @@ class ProfileSettingsScreen extends ConsumerWidget {
     return SingleChildScrollView(
       child: Column(
         children: [
-          _buildProfileHeader(data),
+          _buildProfileHeader(context, ref, data),
           _buildStatsRow(data),
           Container(
             color: medicalBg,
             padding: const EdgeInsets.only(top: 24, bottom: 48),
             child: Column(
               children: [
-                _buildHealthGoals(),
+                _buildHealthGoals(context, ref),
                 const SizedBox(height: 24),
-                _buildEmergencyContact(),
+                _buildAccountSafety(context, ref, data),
                 const SizedBox(height: 24),
-                _buildAccountSafety(ref, data),
-                const SizedBox(height: 24),
-                _buildSignOutButton(),
+                _buildSignOutButton(context, ref),
               ],
             ),
           ),
@@ -225,7 +321,19 @@ class ProfileSettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildProfileHeader(UserProfile data) {
+  Widget _buildProfileHeader(BuildContext context, WidgetRef ref, UserProfile data) {
+    final avatarAsync = ref.watch(avatarUrlProvider);
+    final genderAsync = ref.watch(genderProvider);
+
+    final gender = (genderAsync.valueOrNull ?? '').toLowerCase();
+    final fallback = gender == 'female'
+        ? 'https://i.pravatar.cc/150?img=47'
+        : gender == 'male'
+            ? 'https://i.pravatar.cc/150?img=12'
+            : data.avatarUrl;
+
+    final avatarUrl = avatarAsync.valueOrNull ?? fallback;
+
     return Container(
       width: double.infinity,
       color: medicalBg,
@@ -242,7 +350,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.black.withOpacity(0.05)),
                   image: DecorationImage(
-                    image: NetworkImage(data.avatarUrl),
+                    image: NetworkImage(avatarUrl),
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -261,7 +369,40 @@ class ProfileSettingsScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.photo_camera, color: Colors.white, size: 18),
+                child: InkWell(
+                  onTap: () async {
+                    final picker = ImagePicker();
+                    final picked = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
+                      maxWidth: 1024,
+                    );
+                    if (picked == null) return;
+
+                    final url = await ref
+                        .read(profileRepositoryProvider)
+                        .uploadAvatar(File(picked.path));
+
+                    if (url != null) {
+                      ref.invalidate(avatarUrlProvider);
+                      await ref.read(profileProvider.notifier).reloadFromRepo();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Profile photo updated')),
+                        );
+                      }
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not update photo (check internet/login)'),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: const Icon(Icons.photo_camera, color: Colors.white, size: 18),
+                ),
               ),
             ],
           ),
@@ -294,16 +435,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
       child: Row(
         children: [
           Expanded(child: _buildStatItem('Weight', '${data.weightKg}', 'kg', true)),
-          Expanded(child: _buildStatItem('Height', '${data.heightCm}', 'cm', true)),
-          Expanded(
-            child: _buildStatItem(
-              'Blood',
-              data.bloodType,
-              '',
-              false,
-              valueColor: Colors.red.shade600,
-            ),
-          ),
+          Expanded(child: _buildStatItem('Height', '${data.heightCm}', 'cm', false)),
         ],
       ),
     );
@@ -357,7 +489,26 @@ class ProfileSettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHealthGoals() {
+  Widget _buildHealthGoals(BuildContext context, WidgetRef ref) {
+    final stepGoalAsync = ref.watch(stepGoalProvider);
+    final stepGoalText = stepGoalAsync.when(
+      data: (v) => (v == null || v <= 0) ? 'Tap to set your step goal' : '$v steps daily',
+      loading: () => 'Loading...',
+      error: (_, __) => 'Tap to set your step goal',
+    );
+
+    final dailyCalAsync = ref.watch(dailyCaloriesGoalProvider);
+    final dailyCalSubtitle = dailyCalAsync.when(
+      data: (v) => (v == null || v <= 0)
+          ? 'Uses calories calculated from your health profile'
+          : '$v kcal daily (custom goal)',
+      loading: () => 'Loading...',
+      error: (_, __) => 'Tap to set your calorie goal',
+    );
+
+    final isAdvisorAsync = ref.watch(isNutritionAdvisorProvider);
+    final isAdvisor = isAdvisorAsync.valueOrNull == true;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -369,80 +520,54 @@ class ProfileSettingsScreen extends ConsumerWidget {
             child: Column(
               children: [
                 _buildListTile(
-                  icon: Icons.restaurant,
-                  title: 'Low Sodium Diet',
-                  subtitle: 'Managing Hypertension',
-                  trailing: Icon(Icons.check_circle, color: primary, size: 20),
+                  icon: Icons.restaurant_menu,
+                  title: 'Daily calorie goal',
+                  subtitle: dailyCalSubtitle,
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
                   showBorder: true,
+                  onTap: () => _editDailyCalorieGoal(context, ref),
                 ),
                 _buildListTile(
                   icon: Icons.fitness_center,
                   title: 'Activity Goal',
-                  subtitle: '10,000 steps daily',
+                  subtitle: stepGoalText,
                   trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
                   showBorder: false,
+                  onTap: () => _editStepGoal(context, ref),
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyContact() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSectionTitle('Emergency Contact'),
+          const SizedBox(height: 14),
           Container(
-            padding: const EdgeInsets.all(16),
             decoration: _cardDecoration(),
-            child: Row(
+            child: Column(
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.red.shade100),
+                if (isAdvisor)
+                  _buildListTile(
+                    icon: Icons.support_agent_outlined,
+                    title: 'Advisor inbox',
+                    subtitle: 'Reply to your assigned Nutrition Advice chats.',
+                    trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
+                    showBorder: true,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AdvisorAdviceInboxScreen()),
+                      );
+                    },
                   ),
-                  child: Icon(Icons.medical_services, color: Colors.red.shade600),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'David Okafor',
-                        style: GoogleFonts.inter(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: textDark,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Spouse • +233 24 555 0192',
-                        style: GoogleFonts.inter(fontSize: 13, color: textLight),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: Text(
-                    'Change',
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: primary,
-                    ),
-                  ),
+                _buildListTile(
+                  icon: Icons.badge_outlined,
+                  title: 'Apply as Nutrition Professional',
+                  subtitle:
+                      'Complete application with photo, Ghana card, certificates, CV, and contact details.',
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
+                  showBorder: false,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const DietitianApplicationScreen()),
+                    );
+                  },
                 ),
               ],
             ),
@@ -452,7 +577,202 @@ class ProfileSettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAccountSafety(WidgetRef ref, UserProfile data) {
+  Future<void> _openDieteticsDoctorPortal(BuildContext context) async {
+    const storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'sanctum_token');
+    if (token == null || token.isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login again to continue.')),
+      );
+      return;
+    }
+
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+
+    try {
+      final resp = await dio.post('/dietetics/apply/link');
+      final raw = resp.data;
+      final map = (raw is Map)
+          ? raw.map((k, v) => MapEntry(k.toString(), v))
+          : const <String, dynamic>{};
+      final url = (map['url'] ??
+              ((map['data'] is Map)
+                  ? (map['data'] as Map)
+                      .map((k, v) => MapEntry(k.toString(), v))['url']
+                  : null))
+          ?.toString();
+      if (url == null || url.isEmpty) throw Exception('Missing url');
+
+      final uri = Uri.parse(url);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the application page.')),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to open portal. ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _editDailyCalorieGoal(BuildContext context, WidgetRef ref) async {
+    final repo = ref.read(profileRepositoryProvider);
+    final current = await repo.readLocalProfile();
+    final existing = (current?['daily_calories_target'] as int?) ??
+        int.tryParse((current?['daily_calories_target'] ?? '').toString());
+
+    if (!context.mounted) return;
+
+    final controller = TextEditingController(
+      text: (existing == null || existing <= 0) ? '' : existing.toString(),
+    );
+
+    final res = await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Daily calorie goal'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Set a fixed daily calorie target (800–8000 kcal), or use the value calculated from height, weight, activity, and goal.',
+                style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  hintText: 'e.g. 2200',
+                  suffixText: 'kcal',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(<String, dynamic>{'clear': true}),
+              child: const Text('Use calculated'),
+            ),
+            TextButton(
+              onPressed: () {
+                final v = int.tryParse(controller.text.trim());
+                if (v == null) return;
+                Navigator.of(ctx).pop(<String, dynamic>{'value': v});
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!context.mounted) return;
+    if (res == null) return;
+
+    if (res['clear'] == true) {
+      await repo.saveAndSync(<String, dynamic>{'daily_calories_target': null});
+      unawaited(ForegroundNotificationPrefs.updateCalorieGoal(0));
+      ref.invalidate(dailyCaloriesGoalProvider);
+      ref.invalidate(dashboardDataProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Using calculated daily calories from your profile')),
+      );
+      return;
+    }
+
+    final raw = res['value'];
+    if (raw is! int) return;
+    final clamped = raw.clamp(800, 8000);
+    await repo.saveAndSync(<String, dynamic>{'daily_calories_target': clamped});
+    unawaited(ForegroundNotificationPrefs.updateCalorieGoal(clamped));
+
+    ref.invalidate(dailyCaloriesGoalProvider);
+    ref.invalidate(dashboardDataProvider);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Daily calorie goal updated to $clamped kcal')),
+    );
+  }
+
+  Future<void> _editStepGoal(BuildContext context, WidgetRef ref) async {
+    final repo = ref.read(profileRepositoryProvider);
+    final current = await repo.readLocalProfile();
+    final existing = (current?['step_goal'] as int?) ??
+        int.tryParse((current?['step_goal'] ?? '').toString());
+
+    if (!context.mounted) return;
+
+    final controller = TextEditingController(
+      text: existing == null ? '' : existing.toString(),
+    );
+
+    final res = await showDialog<int?>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Daily step goal'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              hintText: 'e.g. 10000',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(null),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final v = int.tryParse(controller.text.trim());
+                Navigator.of(ctx).pop(v);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (res == null) return;
+    final clamped = res.clamp(10, 1000000);
+    await repo.saveAndSync({'step_goal': clamped});
+    unawaited(ForegroundNotificationPrefs.updateStepGoal(clamped));
+
+    // Update UI immediately across the app.
+    ref.invalidate(stepGoalProvider);
+    ref.invalidate(activityDataProvider);
+    ref.invalidate(dashboardDataProvider);
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Step goal updated to $clamped steps')),
+    );
+  }
+
+  Widget _buildAccountSafety(BuildContext context, WidgetRef ref, UserProfile data) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -463,30 +783,25 @@ class ProfileSettingsScreen extends ConsumerWidget {
             decoration: _cardDecoration(),
             child: Column(
               children: [
-                _buildListTile(
-                  icon: Icons.fingerprint,
-                  title: 'Biometric Login',
-                  trailing: CupertinoSwitch(
-                    value: data.isBiometricEnabled,
-                    activeColor: primary,
-                    onChanged: (val) => ref.read(profileProvider.notifier).toggleBiometrics(val),
+                InkWell(
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const HealthProfileScreen(isEditing: true),
+                      ),
+                    );
+                    if (!context.mounted) return;
+                    await ref.read(profileProvider.notifier).reloadFromRepo();
+                    ref.invalidate(avatarUrlProvider);
+                    ref.invalidate(genderProvider);
+                  },
+                  child: _buildListTile(
+                    icon: Icons.edit_note,
+                    title: 'Edit Health Profile',
+                    trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
+                    showBorder: false,
+                    isMinimal: true,
                   ),
-                  showBorder: true,
-                  isMinimal: true,
-                ),
-                _buildListTile(
-                  icon: Icons.notifications,
-                  title: 'Medical Alerts',
-                  trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
-                  showBorder: true,
-                  isMinimal: true,
-                ),
-                _buildListTile(
-                  icon: Icons.shield,
-                  title: 'Data Privacy',
-                  trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
-                  showBorder: false,
-                  isMinimal: true,
                 ),
               ],
             ),
@@ -496,7 +811,24 @@ class ProfileSettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSignOutButton() {
+  void _invalidateSessionCaches(WidgetRef ref) {
+    ref.invalidate(authInitializationProvider);
+    ref.invalidate(dashboardDataProvider);
+    ref.invalidate(profileProvider);
+    ref.invalidate(stepGoalProvider);
+    ref.invalidate(dailyCaloriesGoalProvider);
+    ref.invalidate(avatarUrlProvider);
+    ref.invalidate(genderProvider);
+    ref.invalidate(activityDataProvider);
+    ref.invalidate(yesterdayStepsLocalProvider);
+    ref.invalidate(stepsTodayProvider);
+    ref.invalidate(nutritionHistoryProvider);
+    ref.invalidate(leaderboardProvider);
+    ref.invalidate(safetyHubProvider);
+    ref.invalidate(healthProfileProvider);
+  }
+
+  Widget _buildSignOutButton(BuildContext context, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -505,8 +837,14 @@ class ProfileSettingsScreen extends ConsumerWidget {
             width: double.infinity,
             height: 56,
             child: OutlinedButton.icon(
-              onPressed: () {
-                // TODO: Handle Sanctum Logout
+              onPressed: () async {
+                await ref.read(authProvider.notifier).signOut();
+                _invalidateSessionCaches(ref);
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const AuthScreen()),
+                  (_) => false,
+                );
               },
               style: OutlinedButton.styleFrom(
                 backgroundColor: Colors.white,
@@ -520,10 +858,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          Text(
-            'AKWAABAFIT AI v2.4.1 (MEDICAL EDITION)',
-            style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF94A3B8), letterSpacing: 0.5),
-          ),
+          // Removed app version/edition footer per request.
         ],
       ),
     );
@@ -553,48 +888,58 @@ class ProfileSettingsScreen extends ConsumerWidget {
     required Widget trailing,
     required bool showBorder,
     bool isMinimal = false,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: showBorder ? const Border(bottom: BorderSide(color: Color(0xFFF0F0F0))) : null,
-      ),
-      child: Row(
-        children: [
-          if (!isMinimal)
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE7F0ED),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: primary),
-            )
-          else
-            Icon(icon, color: primary, size: 22),
-          SizedBox(width: isMinimal ? 12 : 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: isMinimal ? FontWeight.normal : FontWeight.w600,
-                    color: textDark,
-                  ),
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: showBorder
+              ? const Border(bottom: BorderSide(color: Color(0xFFF0F0F0)))
+              : null,
+        ),
+        child: Row(
+          children: [
+            if (!isMinimal)
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE7F0ED),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: GoogleFonts.inter(fontSize: 13, color: textLight)),
+                child: Icon(icon, color: primary),
+              )
+            else
+              Icon(icon, color: primary, size: 22),
+            SizedBox(width: isMinimal ? 12 : 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight:
+                          isMinimal ? FontWeight.normal : FontWeight.w600,
+                      color: textDark,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.inter(fontSize: 13, color: textLight),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          trailing,
-        ],
+            trailing,
+          ],
+        ),
       ),
     );
   }

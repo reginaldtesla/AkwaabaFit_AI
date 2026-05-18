@@ -8,12 +8,10 @@ class AppBottomNav extends StatelessWidget {
     super.key,
     required this.activeTab,
     required this.onTabSelected,
-    this.showFabGap = false,
   });
 
   final AppTab activeTab;
   final ValueChanged<AppTab> onTabSelected;
-  final bool showFabGap;
 
   static const Color primary = Color(0xFF1A5D1A);
 
@@ -24,7 +22,7 @@ class AppBottomNav extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.only(top: 12, bottom: 16, left: 20, right: 20),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.95),
+          color: Colors.white.withValues(alpha: 0.95),
           border: Border(top: BorderSide(color: Colors.blueGrey.shade100)),
         ),
         child: Row(
@@ -43,14 +41,14 @@ class AppBottomNav extends StatelessWidget {
               onTap: () => onTabSelected(AppTab.history),
             ),
             _navItem(
-              icon: Icons.analytics_outlined,
-              label: 'Stats',
+              icon: Icons.directions_walk_outlined,
+              label: 'Stride',
               isActive: activeTab == AppTab.stats,
               onTap: () => onTabSelected(AppTab.stats),
             ),
             _navItem(
-              icon: Icons.health_and_safety_outlined,
-              label: 'Safety',
+              icon: Icons.restaurant_menu,
+              label: 'Advice',
               isActive: activeTab == AppTab.safety,
               onTap: () => onTabSelected(AppTab.safety),
             ),
@@ -94,4 +92,3 @@ class AppBottomNav extends StatelessWidget {
     );
   }
 }
-

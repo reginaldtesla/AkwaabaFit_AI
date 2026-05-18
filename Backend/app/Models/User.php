@@ -3,7 +3,9 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\ApiPasswordResetNotification;
 use Database\Factories\UserFactory;
+use Illuminate\Auth\Passwords\CanResetPassword;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,12 +14,33 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'is_public_on_leaderboard', 'age', 'gender', 'height', 'weight', 'activity_level', 'goal', 'profile_completed'])]
+#[Fillable([
+    'name',
+    'email',
+    'username',
+    'phone',
+    'avatar_url',
+    'password',
+    'is_public_on_leaderboard',
+    'is_nutrition_advisor',
+    'is_staff_admin',
+    'age',
+    'gender',
+    'height',
+    'weight',
+    'activity_level',
+    'step_goal',
+    'daily_calories_target',
+    'goal',
+    'workout_time_preference',
+    'workout_days_per_week',
+    'profile_completed',
+])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use CanResetPassword, HasApiTokens, HasFactory, Notifiable;
 
     /**
      * Get the attributes that should be cast.
@@ -30,9 +53,14 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_public_on_leaderboard' => 'boolean',
+            'is_nutrition_advisor' => 'boolean',
+            'is_staff_admin' => 'boolean',
             'age' => 'integer',
             'height' => 'integer',
             'weight' => 'integer',
+            'step_goal' => 'integer',
+            'daily_calories_target' => 'integer',
+            'workout_days_per_week' => 'integer',
             'profile_completed' => 'boolean',
         ];
     }
@@ -45,5 +73,50 @@ class User extends Authenticatable
     public function consultations(): HasMany
     {
         return $this->hasMany(Consultation::class);
+    }
+
+    public function mealLogs(): HasMany
+    {
+        return $this->hasMany(MealLog::class);
+    }
+
+    /**
+     * Resolve user by username, phone digits, or email (same rules as API login).
+     */
+    public static function findByLoginIdentifier(string $login): ?self
+    {
+        $login = trim($login);
+        if ($login === '') {
+            return null;
+        }
+
+        $user = static::query()
+            ->whereRaw('LOWER(username) = ?', [mb_strtolower($login)])
+            ->first();
+
+        if ($user !== null) {
+            return $user;
+        }
+
+        $digits = preg_replace('/\D+/', '', $login);
+        if ($digits !== '') {
+            $byPhone = static::query()->where('phone', $digits)->first();
+            if ($byPhone !== null) {
+                return $byPhone;
+            }
+        }
+
+        if (filter_var($login, FILTER_VALIDATE_EMAIL)) {
+            return static::query()
+                ->whereRaw('LOWER(email) = ?', [mb_strtolower($login)])
+                ->first();
+        }
+
+        return null;
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ApiPasswordResetNotification($token));
     }
 }

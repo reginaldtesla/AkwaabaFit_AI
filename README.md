@@ -1,216 +1,436 @@
-# AkwaabaFitAIProject
+# AkwaabaFit AI
 
-## Overview
+Culturally adapted fitness and nutrition app for Ghanaians. Users track activity and meals, scan local dishes with on-device AI, and book paid nutrition advice sessions with verified dietitians.
 
-AkwaabaFitAIProject is a culturally-adapted AI-powered fitness application designed specifically for Ghanaians. Built with the Ghanaian context in mind, this app combines traditional fitness principles with modern AI technology to provide personalized workout recommendations, nutritional guidance, and health tracking tailored to the Ghanaian lifestyle and dietary preferences.
+**Stack:** Laravel 12 API · Flutter mobile app · YOLOv8 food model training pipeline
 
-The app addresses the growing need for accessible fitness solutions in Ghana by incorporating local foods, cultural fitness practices, and AI-driven personalization. Whether you're a busy professional in Accra, a student in Kumasi, or someone looking to maintain a healthy lifestyle anywhere in Ghana, AkwaabaFitAI provides "welcome" (akwaaba) access to fitness and wellness.
+## Project structure
 
-The project consists of a Laravel-based backend API and a Flutter mobile application, designed to deliver a seamless, culturally-relevant fitness experience across iOS and Android devices.
+The repository contains three main parts:
 
-## Project Structure
+- **Backend** — Laravel API, admin web UI, Paystack webhooks, Reverb configuration
+- **Mobile** — Flutter app for iOS and Android
+- **AI** — Dataset merge, YOLOv8 training, ONNX export for the scanner
 
+## What is implemented
+
+### Mobile app (Flutter)
+
+| Area | Details |
+|------|---------|
+| **Auth** | Register, login, logout, forgot / reset password, health profile onboarding |
+| **Home dashboard** | Calories in/out, macro targets, weather (OpenWeather), AI insight text, quick actions |
+| **Stride (fitness)** | Step tracking (pedometer), foreground/background step sync, hourly activity logs, daily leaderboard |
+| **Food scanner** | On-device **YOLOv8 ONNX**; 22 Ghanaian / common dish classes; camera + gallery; confidence %; auto-log to nutrition history |
+| **Nutrition** | Meal history by day, macro row (P/C/F), offline SQLite cache + server sync when online |
+| **Nutrition advice** | Browse listed dietitians (photo, rating, hourly rate), book **Ask now** or **scheduled** session, Paystack checkout |
+| **Advice chat** | Client + advisor chat with polling; session phases (`waiting` → `live` → `ended`); chat blocked until scheduled start; local reminders (−2h, −30m, at start) + inbox notifications |
+| **Dietitian application** | In-app form: Ghana card, certificate, photo, CV, all required fields; camera/gallery for photo; status from API |
+| **Profile** | Edit profile, avatar upload, goals, calorie/macro targets, sync controls |
+| **Offline** | Drift/SQLite for meals, steps, nutrition food catalog cache, outbox sync |
+| **Push** | Firebase Cloud Messaging device token registration |
+
+**Main tabs:** Home · History (nutrition) · Stride · Advice · Profile
+
+### Backend API (Laravel + Sanctum)
+
+| Area | Endpoints / behaviour |
+|------|------------------------|
+| **Auth** | Register, login, logout, password reset |
+| **Profile** | Show, update, avatar upload |
+| **Dashboard** | Aggregates steps, meals, targets, weather |
+| **Fitness** | Step sync, hourly activity, today summary, daily leaderboard |
+| **Nutrition** | Log meal, history, per-class lookup, full food catalog |
+| **Consultations** | Book, Paystack initiate/verify, list my sessions, messaging + delta poll, typing |
+| **Payments** | Paystack webhook (signed) |
+| **Dietitians** | Public listing for app; application submit + status |
+| **Advisor** | Protected routes for in-app advisor role |
+| **Devices** | FCM token register / unregister |
+| **Broadcasting** | Client config for Reverb / Pusher-compatible WebSockets |
+
+**Scheduled sessions:** Live window starts at scheduled time, ends at session expiry (paid + 2 hours). Messages are blocked with **402** while the session is still waiting.
+
+### Admin & web
+
+| URL | Purpose |
+|-----|---------|
+| `/admin/login` | Staff admin login |
+| `/admin/dietetics/unlock` | Shared-key unlock (`DIETETICS_REVIEW_KEY` in environment) |
+| `/admin/dietetics/applications` | Review pending dietitian applications; approve with **rating** + **listed hourly rate**; reject; download documents |
+| `/admin/advice` | Staff view of advice chats |
+| `/advisor/login` | Web login for nutrition advisors |
+| `/paystack/return` | Payment return page after Paystack redirect |
+
+Approved applications feed the mobile dietitian list (photo, rating, hourly rate from admin fields).
+
+### AI / food recognition
+
+| Item | Detail |
+|------|--------|
+| **Training** | YOLOv8 on merged Ghanaian food datasets |
+| **Mobile model** | ONNX (opset 12) bundled in the app |
+| **Classes (22)** | banku, beans, bread, burger, chicken, egg-pepper, fufu, hausa-koko, jollof, kelewele, kenkey, kokonte, koose, meat, nkate-cake, pasta, pizza, plantain, rice, salad, waakye, yam |
+| **Nutrition lookup** | Hybrid: bundled defaults → local cache → server refresh; generic fallback if class missing |
+| **Macros on scan** | Reference values per food class (not measured from plate size); detection is visual only |
+
+### Integrations
+
+- **Paystack** — GHS payments for nutrition advice
+- **Firebase FCM** — push notifications
+- **OpenWeather** — dashboard weather
+- **Laravel Reverb** — WebSocket stack (optional; mobile chat uses polling + FCM)
+
+## Architecture (high level)
+
+```mermaid
+flowchart LR
+  subgraph mobile [Flutter App]
+    ONNX[ONNX Food Detector]
+    SQLite[(SQLite / Drift)]
+    UI[Screens]
+    UI --> ONNX
+    UI --> SQLite
+  end
+  subgraph api [Laravel API]
+    Sanctum[Sanctum Auth]
+    DB[(MySQL)]
+    Storage[Public Storage]
+    Paystack[Paystack Webhook]
+  end
+  mobile -->|HTTPS JSON| api
+  ONNX -->|class name| SQLite
+  SQLite -->|sync when online| api
+  Paystack --> api
 ```
-AkwaabaFitAIProject/
-├── Backend/          # Laravel API backend
-├── Mobile/           # Flutter mobile application
-└── README.md         # This file
-```
-
-## Features
-
-- **AI-Powered Workouts**: Personalized workout recommendations based on user goals and fitness level
-- **Progress Tracking**: Monitor fitness progress over time
-- **User Authentication**: Secure user accounts with Laravel Sanctum
-- **Cross-Platform Mobile App**: Flutter app that works on iOS and Android
-- **RESTful API**: Well-structured backend API for data management
-
-## How It Works
-
-### 1. User Onboarding & Profiling
-
-- Users create accounts and complete a comprehensive health profile
-- Input includes fitness goals, current fitness level, dietary preferences, and lifestyle factors
-- Cultural considerations: Ghanaian dietary patterns, local food preferences, and traditional activities
-
-### 2. AI-Powered Recommendations
-
-- Machine learning algorithms analyze user data to generate personalized workout plans
-- Recommendations consider Ghanaian climate, available local gym facilities, and cultural fitness practices
-- Adaptive AI that learns from user progress and adjusts recommendations over time
-
-### 3. Workout Execution & Tracking
-
-- Step-by-step workout guidance with video demonstrations
-- Real-time progress tracking during exercises
-- Integration with wearable devices for automatic data collection
-
-### 4. Nutritional Guidance
-
-- Meal plans featuring Ghanaian cuisine (banku, jollof rice, waakye, etc.)
-- Nutritional information adapted to local food availability and cultural preferences
-- Calorie tracking with Ghanaian portion sizes and meal patterns
-
-### 5. Progress Monitoring & Analytics
-
-- Visual progress charts and milestone celebrations
-- Weekly/monthly reports on fitness improvements
-- Community features to connect with other Ghanaian fitness enthusiasts
-
-### 6. Cultural Integration
-
-- Incorporation of traditional Ghanaian games and activities (ampe, oware, etc.) as fitness options
-- Local language support and culturally relevant motivational content
-- Community challenges and group fitness events
-
-The app leverages AI to make fitness accessible and enjoyable for Ghanaians, bridging traditional wellness practices with modern technology.
-
-### Backend
-
-- **Laravel 12**: PHP framework for robust API development
-- **Laravel Sanctum**: API authentication
-- **MySQL/PostgreSQL**: Database (configurable)
-- **Pest**: PHP testing framework
-
-### Mobile
-
-- **Flutter**: Cross-platform mobile development
-- **Dart**: Programming language
 
 ## Prerequisites
 
-### Backend Requirements
+### Backend
 
-- PHP 8.2 or higher
+- PHP 8.2+
 - Composer
-- Node.js & npm (for asset compilation)
-- MySQL/PostgreSQL database
+- Node.js & npm (Vite assets)
+- MySQL or PostgreSQL
 
-### Mobile Requirements
+### Mobile
 
-- Flutter SDK
-- Android Studio (for Android development)
-- Xcode (for iOS development, macOS only)
+- Flutter SDK 3.10+
+- Android Studio / Xcode (for device builds)
 
-## Installation & Setup
+### Optional (AI training)
 
-### Backend Setup
+- Python 3.10+, Ultralytics YOLOv8
 
-1. Navigate to the Backend directory:
+## Installation on a new computer
 
-   ```bash
-   cd Backend
-   ```
+Use this section if you received the project on a **USB drive** (or zip) instead of cloning from GitHub. You still install all dependencies on the new machine; copying source code is not enough by itself.
 
-2. Install PHP dependencies:
+### Before you start (USB handoff)
 
-   ```bash
-   composer install
-   ```
+**The person sending the project should copy:**
 
-3. Install Node.js dependencies:
+- The full project folder (backend, mobile, and AI folders).
+- A **separate, secure copy** of secrets (do not post these in chat): backend environment file, Firebase Android config, Firebase iOS config, and FCM service account JSON if push is needed.
+- Optional: a MySQL database export if you want the same users/meals on the new PC (otherwise you start with an empty database).
 
-   ```bash
-   npm install
-   ```
+**Usually missing or unsafe to rely on after USB copy** (reinstall or recreate on the new PC):
 
-4. Copy environment file and configure:
+| Item | What to do on the new computer |
+|------|--------------------------------|
+| PHP `vendor` folder | Run `composer install` again |
+| JavaScript `node_modules` | Run `npm install` again |
+| Backend environment file | Copy from sender **or** duplicate `.env.example` and fill in values |
+| Flutter build cache | Run `flutter pub get` (and `flutter clean` if builds fail) |
+| Database | Create empty DB and run migrations, **or** import a dump from the sender |
+| Uploaded files (avatars, dietitian documents) | Copy the sender’s storage folder **or** accept empty uploads on a fresh DB |
 
-   ```bash
-   cp .env.example .env
-   ```
+If the USB copy included `vendor` or `node_modules` from another PC, it is often faster to **delete those folders** and reinstall with Composer/npm so binaries match your OS.
 
-5. Generate application key:
+---
 
-   ```bash
-   php artisan key:generate
-   ```
+### Step 1 — Install required software (new PC)
 
-6. Configure your database in `.env` file
+Install these **before** opening the project.
 
-7. Run database migrations:
+| Tool | Used for | Notes |
+|------|----------|--------|
+| **PHP 8.2+** | Laravel API | Enable extensions: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo` |
+| **Composer** | PHP packages | [getcomposer.org](https://getcomposer.org) |
+| **Node.js 18+** and **npm** | Frontend assets | [nodejs.org](https://nodejs.org) |
+| **MySQL 8** (or MariaDB) | Database | Create an empty database, e.g. `akwaabafit` |
+| **Flutter 3.10+** | Mobile app | [flutter.dev](https://flutter.dev) — then run `flutter doctor` and fix anything marked ✗ |
+| **Android Studio** | Android builds | SDK + emulator or a physical phone with USB debugging |
+| **Git** (optional) | Version control | Not required for USB setup |
 
-   ```bash
-   php artisan migrate
-   ```
+**Windows tips:** Add PHP, Composer, Node, and Flutter to your system **PATH**. Use **PowerShell** or **Command Prompt** for the commands below.
 
-8. Start the development server:
-   ```bash
-   php artisan serve
-   ```
+**Optional (only to retrain the food model):** Python 3.10+, then `pip install ultralytics` inside a virtual environment in the AI folder.
 
-### Mobile Setup
+---
 
-1. Navigate to the Mobile directory:
+### Step 2 — Copy the project from USB
 
-   ```bash
-   cd Mobile
-   ```
+1. Plug in the USB drive and copy the whole **AkwaabaFit** project folder to a local disk (e.g. `Documents` or `htdocs`).
+2. Confirm you see three main parts: **backend** (Laravel), **mobile** (Flutter), and **AI** (training scripts).
+3. Place the secret files the sender gave you:
+   - Backend: environment file in the Laravel root (same place as `.env.example`).
+   - Mobile Android: Firebase config file in the Android app module.
+   - Mobile iOS: Firebase plist in the iOS runner (if building for iPhone).
 
-2. Install Flutter dependencies:
+If you do **not** have a backend environment file, create one by copying `.env.example` to `.env` and filling in database name, user, password, and API keys (see [Environment variables](#environment-variables-backend)).
 
-   ```bash
-   flutter pub get
-   ```
+---
 
-3. Run the app:
-   ```bash
-   flutter run
-   ```
+### Step 3 — Backend (Laravel API)
 
-## API Documentation
-
-The backend provides RESTful APIs for:
-
-- User authentication and management
-- Workout data management
-- Progress tracking
-- AI recommendations
-
-API endpoints are defined in `Backend/routes/api.php`
-
-## Testing
-
-### Backend Testing
+Open a terminal in the **backend (Laravel) folder** and run **in order**:
 
 ```bash
-cd Backend
+composer install
+npm install
+```
+
+If you do not have a `.env` file yet:
+
+```bash
+copy .env.example .env
+```
+
+(On macOS/Linux use `cp .env.example .env`.)
+
+Then:
+
+```bash
+php artisan key:generate
+```
+
+Edit `.env` on the new machine (minimum):
+
+- `APP_URL` — URL you will use to reach the API (see below).
+- `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — match the MySQL database you created.
+- Optional but recommended for full features: Paystack, FCM, OpenWeather, `DIETETICS_REVIEW_KEY`.
+
+Create tables and seed food nutrition data:
+
+```bash
+php artisan migrate
+php artisan db:seed
+php artisan storage:link
+```
+
+Start the API:
+
+```bash
+php artisan serve
+```
+
+By default the API is at `http://127.0.0.1:8000`. JSON endpoints are under `/api` (e.g. `http://127.0.0.1:8000/api/login`).
+
+**If the sender gave you a database dump:** create the empty database first, import the dump with MySQL tools, then run `php artisan migrate` only if needed for newer migrations.
+
+**Optional background services:**
+
+```bash
+php artisan queue:work
+php artisan reverb:start
+```
+
+Use the queue worker if push notifications or queued jobs should run locally.
+
+**Quick check:**
+
+```bash
 php artisan test
 ```
 
-### Mobile Testing
+All tests should pass if PHP extensions and SQLite/MySQL test config are OK.
+
+---
+
+### Step 4 — Mobile (Flutter app)
+
+Open a **second** terminal in the **mobile (Flutter) folder**:
 
 ```bash
-cd Mobile
+flutter doctor
+flutter pub get
+```
+
+**Choose how the phone/emulator reaches your API:**
+
+| Scenario | `API_BASE_URL` example |
+|----------|-------------------------|
+| Android **emulator** on same PC as API | `http://10.0.2.2:8000/api` |
+| **Physical phone** on same Wi‑Fi as PC | `http://YOUR-PC-LAN-IP:8000/api` (find IP with `ipconfig` on Windows) |
+| **Tunnel** (ngrok, etc.) | `https://YOUR-SUBDOMAIN.ngrok-free.dev/api` |
+
+Run the app (replace with your URL):
+
+```bash
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api
+```
+
+For a physical device on Wi‑Fi, allow port **8000** through Windows Firewall when prompted.
+
+The app sends an ngrok skip header for free-tier tunnels and can rewrite localhost storage URLs to match your configured API host.
+
+**Firebase:** Without Android/iOS Firebase config from the sender, the app may still run but **push notifications will not work** until you add your own Firebase project files.
+
+**If build fails after USB copy:**
+
+```bash
+flutter clean
+flutter pub get
+flutter run --dart-define=API_BASE_URL=...
+```
+
+---
+
+### Step 5 — Optional: AI training environment
+
+Only needed if you will **retrain** the food model, not to run the mobile scanner (the ONNX model is already bundled in the app).
+
+1. Open a terminal in the **AI** folder.
+2. Create a virtual environment and install dependencies (example):
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install ultralytics onnx
+```
+
+3. Run training scripts as documented in that folder. Datasets can be very large; they may have been omitted from the USB copy on purpose.
+
+---
+
+### Step 6 — Smoke test on the new PC
+
+1. Backend running (`php artisan serve`).
+2. Register a new user in the app or use an imported database account.
+3. Log a meal or run the **food scanner** (camera permission).
+4. Open **Advice** and confirm dietitians load (requires seeded/approved data or admin approval flow).
+5. Open admin in a browser: `http://127.0.0.1:8000/admin/login` (staff user) or dietetics unlock URL with review key.
+
+---
+
+### Step 7 — Common USB / new-PC issues
+
+| Problem | Fix |
+|---------|-----|
+| `composer` or `php` not found | Install PHP/Composer and add to PATH; restart the terminal |
+| `class not found` / autoload errors | Run `composer install` in the backend folder |
+| `Vite manifest not found` | Run `npm install` and `npm run build` in the backend folder |
+| `SQLSTATE` / database connection | Check `.env` DB_* values; create the MySQL database |
+| `No application encryption key` | Run `php artisan key:generate` |
+| App shows network error on phone | Use LAN IP or tunnel URL, not `127.0.0.1`, on a physical device |
+| Storage images 404 | Run `php artisan storage:link` |
+| Flutter Gradle errors | Run `flutter doctor`; accept Android licenses |
+| Paystack / FCM not working | Keys in `.env` are machine-specific; copy from sender or use test keys |
+
+---
+
+### Installing from GitHub instead
+
+If you use Git later: clone the repository, then follow **Step 1** (tools), **Step 3** (backend), and **Step 4** (mobile) above. You still create your own `.env` and Firebase files; they are not in the repo.
+
+## Environment variables (Backend)
+
+| Variable | Purpose |
+|----------|---------|
+| `APP_URL` | Public URL (storage links, Paystack callback) |
+| `PAYSTACK_PUBLIC_KEY` / `PAYSTACK_SECRET_KEY` | Payments |
+| `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_JSON` | Push |
+| `OPENWEATHER_API_KEY` | Weather |
+| `DIETETICS_REVIEW_KEY` | Unlock admin application review without staff account |
+| `DIETETICS_ALLOW_SHARED_KEY` | Set `false` in production |
+| `REVERB_*` | WebSocket server |
+| `QUEUE_CONNECTION` | Use `database` and run a queue worker in production |
+
+## Testing
+
+### Backend (Pest / PHPUnit)
+
+```bash
+php artisan test
+```
+
+Feature tests cover auth, profile, dashboard, steps, nutrition history, food nutrition lookup, consultations, scheduled sessions, messaging, dietitian applications, and Paystack webhook handling.
+
+### Mobile
+
+```bash
 flutter test
 ```
+
+## CI
+
+Backend tests run on GitHub Actions for PHP 8.3–8.5.
+
+## Optional in-app update banner
+
+When a newer version is on the store, the app shows a top banner with **Update** (opens Play Store / App Store) and **Dismiss** (optional updates only).
+
+**Backend** — set in environment (then restart API):
+
+| Variable | Purpose |
+|----------|---------|
+| `APP_ANDROID_LATEST_VERSION` | Newest Android version users should install (e.g. `1.0.1`) |
+| `APP_ANDROID_STORE_URL` | Full Play Store link |
+| `APP_IOS_LATEST_VERSION` | Newest iOS version |
+| `APP_IOS_STORE_URL` | Full App Store link |
+| `APP_*_MIN_VERSION` | Below this, banner cannot be dismissed (force update) |
+
+Public check: `GET /api/app/version?platform=android&version=1.0.0` (no login).
+
+After you publish **1.0.1** to the store, set `APP_ANDROID_LATEST_VERSION=1.0.1` on the server. Users still on **1.0.0** see the banner until they update or dismiss it.
+
+---
+
+## Deployment notes
+
+The app is suitable for **beta / pilot** deployment when:
+
+1. API is on **stable HTTPS** (not a dev ngrok URL in release builds).
+2. Production environment: `APP_DEBUG=false`, migrations applied, storage linked.
+3. Paystack live keys + webhook URL configured.
+4. FCM and mail configured for push and password reset.
+5. Android **release signing** and a proper application ID are set before store submission.
+
+See the feature list above for scope; items like wearable sync, community challenges, and full AI workout plans are **not** implemented yet.
+
+## API reference
+
+JSON API routes live under `/api`. Admin and advisor pages are served as web routes on the same host.
+
+## Roadmap / not yet built
+
+- Public App Store / Play Store release packaging (signing, privacy policy pages)
+- Portion-size estimation from scan images
+- Native Reverb client on mobile (polling used today)
+- Rate limiting on login/register
+- Object storage (S3) for multi-server uploads
+- Expanded food model classes and nutrition database
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes
+4. Push and open a Pull Request
 
-## Project Team
+## Project team
 
-This is a final year group project. Team members:
+Final year group project:
 
-- Darko Kwaku Agyemang
+- Reginald
 - Bernard
 - Klenam
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Acknowledgments
 
-- Laravel Framework
-- Flutter Framework
-- All contributors and supporters
+- Laravel, Flutter, Ultralytics YOLOv8, ONNX Runtime
+- Ghanaian food dataset contributors and open datasets used for training
 
 ## Contact
 
-For questions or support, please contact the project maintainers.
+For questions or support, contact the project maintainers.

@@ -1,0 +1,23 @@
+# Training / ML artifacts (regenerate with AI/train.py)
+/runs/
+/AI/runs/
+/AI/datasets/
+/AI/venv/
+*.pt
+*.pth
+*.onnx
+!Mobile/assets/models/*.onnx
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+.cursor/

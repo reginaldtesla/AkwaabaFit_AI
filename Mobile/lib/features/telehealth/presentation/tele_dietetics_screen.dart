@@ -5,8 +5,15 @@ import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
+import 'package:mobile/features/telehealth/data/tele_dietetics_api.dart';
+import 'package:mobile/features/telehealth/presentation/nutrition_advice_chat_screen.dart';
+import 'package:mobile/features/telehealth/presentation/dietitian_application_screen.dart';
+import 'package:mobile/features/telehealth/presentation/nutrition_advice_inbox_screen.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/notifications/local_notification_service.dart';
+import 'dart:async' show unawaited;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS
@@ -14,6 +21,7 @@ import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 
 class Dietitian {
   final String id;
+  final int advisorUserId;
   final String name;
   final String specialty;
   final String category;
@@ -23,6 +31,7 @@ class Dietitian {
 
   Dietitian({
     required this.id,
+    required this.advisorUserId,
     required this.name,
     required this.specialty,
     required this.category,
@@ -32,36 +41,29 @@ class Dietitian {
   });
 }
 
-final selectedCategoryProvider = StateProvider<String>((ref) => 'All');
+final _teleApiProvider = Provider<TeleDieteticsApi>((ref) => TeleDieteticsApi());
 
 final dietitiansProvider = FutureProvider<List<Dietitian>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 600));
+  final api = ref.read(_teleApiProvider);
+  final dtos = await api.fetchDietitians();
 
-  final allDietitians = [
-    Dietitian(
-      id: '1',
-      name: 'Dr. Kwame Osei',
-      specialty: 'Post-Natal Nutrition',
-      category: 'Post-Natal',
-      rating: 4.9,
-      hourlyRate: 150,
-      imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCFN01rKnYW7Wuc9CPEu2beYvmvu7wRissG3_Mv2uKgUIWMRSrqk5_KCUdWhO4aU5YPeS4Srn5CTP_dkKeJzu25tgqEW-lIOj-WmpX44T4bsm3DAwszoZHOOe7iUW2zqZ5GAsNswbFuuqmn0Igmh9PRC-k9fjyGtM50BWq_ja5ftZ1hctGd9fjvV_sj9imezKr7fEYXm9y5FzAoa_TGMhT_EFnOk3sa31w-C3-sgDM3WVAIBnZMXAU7wuPDbdWEA6cG29yfyZ2MxpI',
-    ),
-    Dietitian(
-      id: '2',
-      name: 'Ama Mensah',
-      specialty: 'Sports Dietician',
-      category: 'Athletic',
-      rating: 4.7,
-      hourlyRate: 120,
-      imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCfqPT5OmEljlMpiKnXwVnsCI_2SBFd0FHIOLfkNsAvFQHWuVT4qyeD7d7p8nEf6JSvSi_8M09ypiJ4UfMiQebQx5jSW6ZmxRhPTgA_StTYJ8M3iV-0USUJDIxuQ1fV9rgtkAVStSEBLs44YHnhNGudE2rkschjh5a65iKpVhY-ynbPNKiL8buPaMjVvc6n8-pM6lmOA4sLZBIfGOKEJPV0XX4S8ID3YZqCqYgFOt_wJD3XD6ZS2JH05_eNjGSCw9ZvYpiPs806rrc',
-    ),
-  ];
+  final all = dtos
+      .where((d) => d.id.isNotEmpty && d.name.isNotEmpty && d.advisorUserId > 0)
+      .map(
+        (d) => Dietitian(
+          id: d.id,
+          advisorUserId: d.advisorUserId,
+          name: d.name,
+          specialty: d.specialty,
+          category: d.category,
+          rating: d.rating,
+          hourlyRate: d.hourlyRate,
+          imageUrl: d.imageUrl,
+        ),
+      )
+      .toList();
 
-  final selectedCategory = ref.watch(selectedCategoryProvider);
-
-  if (selectedCategory == 'All') return allDietitians;
-  return allDietitians.where((d) => d.category == selectedCategory).toList();
+  return all;
 });
 
 // =====================================================================
@@ -78,6 +80,9 @@ class TeleDieteticsScreen extends ConsumerWidget {
   final Color muted = const Color(0xFF8C8C8C);
   final Color accent = const Color(0xFFD4AF37);
 
+  /// Matches dashboard “Scan meal” FAB (forest green + pill label).
+  static const Color _adviceFabGreen = Color(0xFF1A5D1A);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
@@ -85,9 +90,60 @@ class TeleDieteticsScreen extends ConsumerWidget {
       appBar: _buildAppBar(context),
       body: Column(
         children: [
-          _buildFilterRow(ref),
-          Expanded(child: _buildDietitianList(ref)),
+          Expanded(child: _buildDietitianList(context, ref)),
         ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 8, right: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Text(
+                'MY SESSIONS',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: _adviceFabGreen,
+                ),
+              ),
+            ),
+            FloatingActionButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NutritionAdviceInboxScreen(),
+                  ),
+                );
+              },
+              backgroundColor: _adviceFabGreen,
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: const Icon(
+                Icons.question_answer_outlined,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.safety,
@@ -114,9 +170,6 @@ class TeleDieteticsScreen extends ConsumerWidget {
         );
         return;
       case AppTab.safety:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
-        );
         return;
       case AppTab.profile:
         Navigator.of(context).pushReplacement(
@@ -128,7 +181,7 @@ class TeleDieteticsScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: bgLight.withOpacity(0.9),
+      backgroundColor: bgLight.withValues(alpha: 0.9),
       elevation: 0,
       scrolledUnderElevation: 0,
       leading: IconButton(
@@ -136,104 +189,111 @@ class TeleDieteticsScreen extends ConsumerWidget {
         onPressed: () => Navigator.pop(context),
       ),
       title: Text(
-        'Tele-Dietetics',
+        'Nutrition Advice',
         style: GoogleFonts.spaceGrotesk(
           color: textMain,
           fontSize: 20,
           fontWeight: FontWeight.bold,
         ),
       ),
+      actions: [
+        TextButton.icon(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DietitianApplicationScreen()),
+            );
+          },
+          icon: Icon(Icons.badge_outlined, size: 20, color: primary),
+          label: Text(
+            'Apply',
+            style: GoogleFonts.spaceGrotesk(
+              color: primary,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildFilterRow(WidgetRef ref) {
-    final categories = ['All', 'Post-Natal', 'Diabetes', 'Athletic'];
-    final selectedCategory = ref.watch(selectedCategoryProvider);
+  Future<void> _refreshDietitians(WidgetRef ref) async {
+    ref.invalidate(dietitiansProvider);
+    await ref.read(dietitiansProvider.future);
+  }
 
-    return Container(
-      height: 60,
-      color: bgLight.withOpacity(0.95),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          final category = categories[index];
-          final isSelected = category == selectedCategory;
+  Widget _scrollableAdviceBody({
+    required BuildContext context,
+    required Widget child,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
-          return Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: GestureDetector(
-              onTap: () => ref.read(selectedCategoryProvider.notifier).state = category,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: isSelected ? primary : surface,
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: isSelected ? primary : Colors.grey.shade200,
-                  ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: primary.withOpacity(0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : [],
-                ),
-                child: Text(
-                  category,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 14,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected ? Colors.white : muted,
+  Widget _buildDietitianList(BuildContext context, WidgetRef ref) {
+    final listState = ref.watch(dietitiansProvider);
+
+    return RefreshIndicator(
+      color: primary,
+      onRefresh: () => _refreshDietitians(ref),
+      child: listState.when(
+        loading: () => _scrollableAdviceBody(
+          context: context,
+          child: Center(child: CircularProgressIndicator(color: primary)),
+        ),
+        error: (err, stack) => _scrollableAdviceBody(
+          context: context,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Could not load professionals. Pull down to try again.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 15),
+              ),
+            ),
+          ),
+        ),
+        data: (dietitians) {
+          if (dietitians.isEmpty) {
+            return _scrollableAdviceBody(
+              context: context,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'No verified nutrition professionals yet.\nPull down to refresh.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 16),
                   ),
                 ),
               ),
-            ),
+            );
+          }
+
+          return ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            itemCount: dietitians.length,
+            itemBuilder: (context, index) {
+              return _buildProviderCard(context, ref, dietitians[index]);
+            },
           );
         },
       ),
     );
   }
 
-  Widget _buildDietitianList(WidgetRef ref) {
-    final listState = ref.watch(dietitiansProvider);
-
-    return listState.when(
-      loading: () => Center(child: CircularProgressIndicator(color: primary)),
-      error: (err, stack) => Center(
-        child: Text(
-          'Error loading providers',
-          style: GoogleFonts.spaceGrotesk(),
-        ),
-      ),
-      data: (dietitians) {
-        if (dietitians.isEmpty) {
-          return Center(
-            child: Text(
-              'No dietitians found for this category.',
-              style: GoogleFonts.spaceGrotesk(color: muted, fontSize: 16),
-            ),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: dietitians.length,
-          itemBuilder: (context, index) {
-            return _buildProviderCard(context, dietitians[index]);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildProviderCard(BuildContext context, Dietitian dietitian) {
+  Widget _buildProviderCard(BuildContext context, WidgetRef ref, Dietitian dietitian) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -251,17 +311,15 @@ class TeleDieteticsScreen extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              shape: BoxShape.circle,
-              image: DecorationImage(
-                image: NetworkImage(dietitian.imageUrl),
-                fit: BoxFit.cover,
-              ),
-            ),
+          CircleAvatar(
+            radius: 32,
+            backgroundColor: Colors.grey.shade200,
+            backgroundImage: dietitian.imageUrl.isNotEmpty
+                ? NetworkImage(dietitian.imageUrl)
+                : null,
+            child: dietitian.imageUrl.isEmpty
+                ? Icon(Icons.person, color: muted, size: 32)
+                : null,
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -308,7 +366,7 @@ class TeleDieteticsScreen extends ConsumerWidget {
                           Icon(Icons.star, color: accent, size: 14),
                           const SizedBox(width: 4),
                           Text(
-                            dietitian.rating.toString(),
+                            dietitian.rating.toStringAsFixed(1),
                             style: GoogleFonts.spaceGrotesk(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -347,7 +405,7 @@ class TeleDieteticsScreen extends ConsumerWidget {
                     ),
                     ElevatedButton(
                       onPressed: () {
-                        _showBookingConfirmation(context, dietitian);
+                        _showBookingConfirmation(context, ref, dietitian);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: primary,
@@ -359,7 +417,7 @@ class TeleDieteticsScreen extends ConsumerWidget {
                         ),
                       ),
                       child: Text(
-                        'BOOK',
+                        'GET ADVICE',
                         style: GoogleFonts.spaceGrotesk(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -377,17 +435,298 @@ class TeleDieteticsScreen extends ConsumerWidget {
     );
   }
 
-  void _showBookingConfirmation(BuildContext context, Dietitian dietitian) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Initiating Paystack for ${dietitian.name}...',
-          style: GoogleFonts.spaceGrotesk(),
-        ),
-        backgroundColor: textMain,
-        behavior: SnackBarBehavior.floating,
-      ),
+  void _showBookingConfirmation(BuildContext context, WidgetRef ref, Dietitian dietitian) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Get food advice',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: textMain,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'with ${dietitian.name}',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: muted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  await _bookNow(context, dietitian);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  'Ask now',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton(
+                onPressed: () async {
+                  Navigator.of(ctx).pop();
+                  final when = await _pickDateTime(context);
+                  if (!context.mounted) return;
+                  if (when == null) return;
+                  await _bookScheduled(context, ref, dietitian, when);
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: textMain,
+                  side: BorderSide(color: Colors.grey.shade300),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: Text(
+                  'Schedule session',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
-}
 
+  Future<DateTime?> _pickDateTime(BuildContext context) async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 60)),
+    );
+    if (date == null) return null;
+    if (!context.mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 10, minute: 0),
+    );
+    if (time == null) return null;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
+  Future<void> _bookNow(BuildContext context, Dietitian dietitian) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (dietitian.advisorUserId <= 0) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'This professional is not linked to an advisor account yet. Approve their application in admin first.',
+            style: GoogleFonts.spaceGrotesk(),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    try {
+      final api = TeleDieteticsApi();
+      final init = await api.initiatePayment(
+        dieticianName: dietitian.name,
+        advisorUserId: dietitian.advisorUserId,
+        type: 'ask_now',
+      );
+      if (init == null) throw Exception('Could not start payment.');
+
+      final uri = Uri.parse(init.authorizationUrl);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) throw Exception('Could not open Paystack checkout.');
+
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Complete payment'),
+            content: const Text('After payment, tap “I’ve paid” to continue.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('I’ve paid'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true) return;
+
+      final paid = await api.verifyPayment(reference: init.reference);
+      if (!paid) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment not confirmed yet. If you just paid, try again in a moment.',
+              style: GoogleFonts.spaceGrotesk(),
+            ),
+            backgroundColor: textMain,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      if (!context.mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NutritionAdviceChatScreen(
+            consultationId: init.consultationId,
+            professionalName: dietitian.name,
+            advisorUserId: dietitian.advisorUserId,
+          ),
+        ),
+      );
+    } catch (e) {
+      final msg = (e is DioException)
+          ? (e.response?.data is Map
+              ? ((e.response!.data as Map)['message'] ?? e.message)?.toString()
+              : e.message)
+          : e.toString();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not start advice session. ${msg ?? 'Please try again.'}',
+            style: GoogleFonts.spaceGrotesk(),
+          ),
+          backgroundColor: textMain,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _bookScheduled(
+    BuildContext context,
+    WidgetRef ref,
+    Dietitian dietitian,
+    DateTime when,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (dietitian.advisorUserId <= 0) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'This professional is not linked to an advisor account yet. Approve their application in admin first.',
+            style: GoogleFonts.spaceGrotesk(),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    try {
+      final api = TeleDieteticsApi();
+      final init = await api.initiatePayment(
+        dieticianName: dietitian.name,
+        advisorUserId: dietitian.advisorUserId,
+        type: 'schedule',
+        scheduledTime: when,
+      );
+      if (init == null) throw Exception('Could not start payment.');
+
+      final uri = Uri.parse(init.authorizationUrl);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) throw Exception('Could not open Paystack checkout.');
+
+      if (!context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Complete payment'),
+            content: const Text('After payment, tap “I’ve paid” to schedule reminders.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('I’ve paid'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true) return;
+
+      final paid = await api.verifyPayment(reference: init.reference);
+      if (!paid) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment not confirmed yet. If you just paid, try again in a moment.',
+              style: GoogleFonts.spaceGrotesk(),
+            ),
+            backgroundColor: textMain,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      unawaited(
+        ref.read(localNotificationServiceProvider).scheduleConsultationReminders(
+              scheduledAt: when,
+              professionalName: dietitian.name,
+            ),
+      );
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Scheduled and reminders set.',
+            style: GoogleFonts.spaceGrotesk(),
+          ),
+          backgroundColor: textMain,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Scheduling failed. Please try again.',
+            style: GoogleFonts.spaceGrotesk(),
+          ),
+          backgroundColor: textMain,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+}

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\DailyStepLog;
 use App\Models\HourlyStepLog;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 
 class ActivityController extends Controller
@@ -19,6 +21,13 @@ class ActivityController extends Controller
             ->whereDate('log_date', $today)
             ->value('step_count') ?? 0;
 
+        $yesterdayDate = now()->subDay()->toDateString();
+        $yesterdayRow = DailyStepLog::query()
+            ->where('user_id', $user->id)
+            ->whereDate('log_date', $yesterdayDate)
+            ->first();
+        $stepsYesterday = $yesterdayRow !== null ? (int) $yesterdayRow->step_count : null;
+
         $activityLevel = (string) ($user->activity_level ?? '');
         $stepGoal = match ($activityLevel) {
             'Sedentary' => 6000,
@@ -28,6 +37,9 @@ class ActivityController extends Controller
             'Extremely active' => 14000,
             default => 10000,
         };
+        if (is_numeric($user->step_goal) && (int) $user->step_goal > 0) {
+            $stepGoal = (int) $user->step_goal;
+        }
 
         $calories = (int) round($stepsToday * 0.04);
         $distanceKm = round($stepsToday * 0.0008, 2); // ~0.8m average step length
@@ -43,15 +55,9 @@ class ActivityController extends Controller
                 ->get(['hour', 'step_count']);
         }
 
-        // Aggregate into 8 buckets (3-hour blocks) for the UI chart.
-        $buckets = array_fill(0, 8, 0);
-        foreach ($hourly as $row) {
-            $index = (int) floor(((int) $row->hour) / 3);
-            if ($index < 0 || $index > 7) {
-                continue;
-            }
-            $buckets[$index] += (int) $row->step_count;
-        }
+        // Mobile sends cumulative "steps today" per ping; each DB row keeps the max for that clock hour.
+        // Convert to approximate steps *during* each 3-hour bucket: peak inside bucket minus peak before it.
+        $buckets = $this->hourlyBucketsFromCumulativeLogs($hourly);
 
         $maxBucket = max($buckets) ?: 1;
         $hourlyData = array_map(
@@ -61,14 +67,97 @@ class ActivityController extends Controller
 
         return response()->json([
             'stepsToday' => $stepsToday,
+            'stepsYesterday' => $stepsYesterday,
             'stepGoal' => $stepGoal,
             'streakDays' => $streakDays,
             'calories' => $calories,
             'distanceKm' => $distanceKm,
             'activeMinutes' => $activeMinutes,
             'hourlyData' => $hourlyData,
+            'hourlyBucketSteps' => array_values($buckets),
             'hasHourlyData' => $hourly->isNotEmpty(),
         ]);
+    }
+
+    /**
+     * Upserts the user's current hour step count for chart accuracy.
+     * Mobile can call this whenever it has a new step reading.
+     */
+    public function logHourly(Request $request): JsonResponse
+    {
+        $user = auth()->user();
+
+        if (! Schema::hasTable('hourly_step_logs')) {
+            return response()->json(['status' => 'skipped'], 200);
+        }
+
+        $data = $request->validate([
+            'step_count' => ['required', 'integer', 'min:0', 'max:200000'],
+            'log_date' => ['nullable', 'date'],
+            'hour' => ['nullable', 'integer', 'min:0', 'max:23'],
+        ]);
+
+        $logDate = isset($data['log_date']) ? Carbon::parse($data['log_date'])->toDateString() : now()->toDateString();
+        $hour = isset($data['hour']) ? (int) $data['hour'] : (int) now()->format('G');
+
+        // We store the max observed steps for the hour to avoid decreasing curves.
+        $existing = HourlyStepLog::query()
+            ->where('user_id', $user->id)
+            ->where('log_date', $logDate)
+            ->where('hour', $hour)
+            ->first();
+
+        $next = (int) $data['step_count'];
+        if ($existing) {
+            $existing->step_count = max((int) $existing->step_count, $next);
+            $existing->save();
+        } else {
+            HourlyStepLog::create([
+                'user_id' => $user->id,
+                'log_date' => $logDate,
+                'hour' => $hour,
+                'step_count' => $next,
+            ]);
+        }
+
+        return response()->json(['status' => 'success'], 201);
+    }
+
+    /**
+     * @param  iterable<int, object{hour: mixed, step_count: mixed}>  $hourlyRows
+     * @return array<int, int>
+     */
+    private function hourlyBucketsFromCumulativeLogs(iterable $hourlyRows): array
+    {
+        $byHour = [];
+        foreach ($hourlyRows as $row) {
+            $h = (int) $row->hour;
+            $v = (int) $row->step_count;
+            $byHour[$h] = max($byHour[$h] ?? 0, $v);
+        }
+
+        $buckets = array_fill(0, 8, 0);
+        for ($bucket = 0; $bucket < 8; $bucket++) {
+            $startHour = $bucket * 3;
+
+            $maxBefore = 0;
+            for ($h = 0; $h < $startHour; $h++) {
+                if (isset($byHour[$h])) {
+                    $maxBefore = max($maxBefore, $byHour[$h]);
+                }
+            }
+
+            $peakInBucket = $maxBefore;
+            for ($h = $startHour; $h <= $startHour + 2; $h++) {
+                if (isset($byHour[$h])) {
+                    $peakInBucket = max($peakInBucket, $byHour[$h]);
+                }
+            }
+
+            $buckets[$bucket] = max(0, $peakInBucket - $maxBefore);
+        }
+
+        return $buckets;
     }
 
     private function calculateStepStreak(int $userId): int
@@ -94,4 +183,3 @@ class ActivityController extends Controller
         return $streak;
     }
 }
-

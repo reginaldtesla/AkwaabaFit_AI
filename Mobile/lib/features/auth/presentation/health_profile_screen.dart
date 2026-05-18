@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,29 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/profile/profile_repository.dart';
+import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/offline/offline_prefs.dart';
+import 'package:mobile/shared/notifications/local_notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Matches backend default step bands from activity level before dashboard sync.
+int defaultStepGoalFromActivityLevel(String? level) {
+  switch (level) {
+    case 'Sedentary':
+      return 6000;
+    case 'Lightly active':
+      return 8000;
+    case 'Moderately active':
+      return 10000;
+    case 'Very active':
+      return 12000;
+    case 'Extremely active':
+      return 14000;
+    default:
+      return 10000;
+  }
+}
 
 // =====================================================================
 // 1. STATE MANAGEMENT & API LOGIC (RIVERPOD + DIO)
@@ -18,7 +42,7 @@ final healthProfileProvider =
 class HealthProfileNotifier extends AsyncNotifier<void> {
   final _dio = Dio(
     BaseOptions(
-      baseUrl: 'http://10.0.2.2:8000/api', // For Android emulator
+      baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: Duration(seconds: 10),
       receiveTimeout: Duration(seconds: 10),
     ),
@@ -36,17 +60,13 @@ class HealthProfileNotifier extends AsyncNotifier<void> {
     int? height,
     int? weight,
     String? activityLevel,
-    String? goal,
   }) async {
     state = const AsyncValue.loading();
     try {
       final token = await _storage.read(key: 'sanctum_token');
       if (token == null) {
-        state = AsyncValue.error(
-          'No auth token found. Please login again.',
-          StackTrace.current,
-        );
-        return false;
+        // Still allow offline-first save; mark pending sync.
+        state = const AsyncValue.data(null);
       }
 
       final data = {
@@ -57,19 +77,15 @@ class HealthProfileNotifier extends AsyncNotifier<void> {
         if (height != null) 'height': height,
         if (weight != null) 'weight': weight,
         if (activityLevel != null) 'activity_level': activityLevel,
-        if (goal != null) 'goal': goal,
       };
 
-      final response = await _dio.patch(
-        '/profile',
-        data: data,
-        options: Options(
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        ),
-      );
+      // Offline-first: save locally first, then sync when possible.
+      await ref.read(profileRepositoryProvider).saveAndSync(data);
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(OfflinePrefsKeys.profileCompleteCached, true);
+      } catch (_) {}
 
       state = const AsyncValue.data(null);
       return true;
@@ -77,8 +93,10 @@ class HealthProfileNotifier extends AsyncNotifier<void> {
       final message =
           e.response?.data['message'] ??
           'Failed to update profile. Please try again.';
+      // Keep the app seamless: we already cached locally. Mark error state but
+      // still return true so user can continue.
       state = AsyncValue.error(message, StackTrace.current);
-      return false;
+      return true;
     }
   }
 }
@@ -88,7 +106,9 @@ class HealthProfileNotifier extends AsyncNotifier<void> {
 // =====================================================================
 
 class HealthProfileScreen extends ConsumerStatefulWidget {
-  const HealthProfileScreen({super.key});
+  const HealthProfileScreen({super.key, this.isEditing = false});
+
+  final bool isEditing;
 
   @override
   ConsumerState<HealthProfileScreen> createState() =>
@@ -111,8 +131,67 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   // Form State
   String? _selectedGender;
   String? _selectedActivityLevel;
-  String? _selectedGoal;
   bool _isPublicOnLeaderboard = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    void refresh() {
+      if (mounted) setState(() {});
+    }
+
+    _nameController.addListener(refresh);
+    _ageController.addListener(refresh);
+    _heightController.addListener(refresh);
+    _weightController.addListener(refresh);
+
+    // Best-effort sync + load local cached values (offline-first).
+    Future.microtask(() async {
+      await ref.read(profileRepositoryProvider).syncPendingIfAny();
+      // Fresh install support: pull the server profile when online.
+      await ref.read(profileRepositoryProvider).fetchRemoteAndCache();
+      final local = await ref.read(profileRepositoryProvider).readLocalProfile();
+      if (!mounted || local == null) return;
+
+      // Only prefill if user hasn't typed yet.
+      if (_nameController.text.isEmpty && local['name'] is String) {
+        _nameController.text = (local['name'] as String);
+      }
+      if (_ageController.text.isEmpty && local['age'] != null) {
+        _ageController.text = '${local['age']}';
+      }
+      if (_heightController.text.isEmpty && local['height'] != null) {
+        _heightController.text = '${local['height']}';
+      }
+      if (_weightController.text.isEmpty && local['weight'] != null) {
+        _weightController.text = '${local['weight']}';
+      }
+
+      setState(() {
+        _selectedGender = local['gender'] as String?;
+        _selectedActivityLevel = local['activity_level'] as String?;
+        final pub = local['is_public_on_leaderboard'];
+        _isPublicOnLeaderboard = pub is bool ? pub : _isPublicOnLeaderboard;
+      });
+    });
+  }
+
+  double get _formProgress {
+    int completed = 0;
+    const int total = 6;
+
+    bool hasText(TextEditingController c) => c.text.trim().isNotEmpty;
+
+    if (hasText(_nameController)) completed++;
+    if (hasText(_ageController)) completed++;
+    if (_selectedGender != null) completed++;
+    if (hasText(_heightController)) completed++;
+    if (hasText(_weightController)) completed++;
+    if (_selectedActivityLevel != null) completed++;
+
+    return (completed / total).clamp(0.0, 1.0);
+  }
 
   @override
   void dispose() {
@@ -126,6 +205,12 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Visual fields validation (not tied to TextFormField validators).
+    if (_selectedActivityLevel == null) {
+      setState(() {});
+      return;
+    }
+
     final success = await ref
         .read(healthProfileProvider.notifier)
         .updateProfile(
@@ -136,18 +221,26 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
           height: int.tryParse(_heightController.text.trim()),
           weight: int.tryParse(_weightController.text.trim()),
           activityLevel: _selectedActivityLevel,
-          goal: _selectedGoal,
         );
 
     if (!mounted) return;
 
     if (success) {
-      // Navigate to main app
-      Navigator.of(
-        context,
-      ).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      unawaited(
+        ref.read(localNotificationServiceProvider).scheduleDailyGoalReminder(
+              stepGoal:
+                  defaultStepGoalFromActivityLevel(_selectedActivityLevel),
+              calorieTarget: 0,
+            ),
       );
+      if (widget.isEditing) {
+        Navigator.of(context).pop();
+      } else {
+        // Navigate to main app
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        );
+      }
     }
   }
 
@@ -203,6 +296,23 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
               ),
             ),
           ),
+
+          // Top progress line (moves as user completes the form)
+          // Kept as the LAST stack child so nothing can paint over it.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: LinearProgressIndicator(
+                value: _formProgress,
+                minHeight: 6,
+                backgroundColor: Colors.blueGrey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(primary),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -237,7 +347,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Tell us about yourself for personalized wellness',
+          'Tell us about yourself — we’ll remind you each morning with a daily goal.',
           style: GoogleFonts.inter(
             fontSize: 14,
             color: Colors.blueGrey.shade500,
@@ -315,21 +425,6 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
             onChanged: (value) =>
                 setState(() => _selectedActivityLevel = value),
             icon: Icons.directions_run_outlined,
-          ),
-          const SizedBox(height: 20),
-          _buildDropdownField(
-            label: 'PRIMARY GOAL',
-            hint: 'What\'s your main goal?',
-            value: _selectedGoal,
-            items: [
-              'Weight loss',
-              'Muscle gain',
-              'Maintain weight',
-              'Improve fitness',
-              'Health monitoring',
-            ],
-            onChanged: (value) => setState(() => _selectedGoal = value),
-            icon: Icons.flag_outlined,
           ),
           const SizedBox(height: 20),
           _buildSwitchField(
@@ -573,7 +668,7 @@ class AppScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('AkwaabaFit AI')),
+      appBar: AppBar(title: const Text('AkwaabaFIT_AI')),
       body: const Center(child: Text('Welcome to the main app!')),
     );
   }

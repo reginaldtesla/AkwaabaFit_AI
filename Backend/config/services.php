@@ -35,4 +35,41 @@ return [
         ],
     ],
 
+    /*
+    | OpenWeatherMap (dashboard weather + air quality via DashboardController).
+    */
+    'openweather' => [
+        'key' => env('OPENWEATHER_API_KEY'),
+        'default_lat' => env('OPENWEATHER_DEFAULT_LAT', 5.6037),
+        'default_lon' => env('OPENWEATHER_DEFAULT_LON', -0.1870),
+        'default_label' => env('OPENWEATHER_DEFAULT_LABEL', 'Accra, GH'),
+    ],
+
+    /*
+    | Dietetics review portal (developer/admin approval).
+    | Provide a shared secret key to access /admin/dietetics pages.
+    */
+    'dietetics_review' => [
+        'key' => env('DIETETICS_REVIEW_KEY'),
+        'allow_shared_key' => filter_var(env('DIETETICS_ALLOW_SHARED_KEY', true), FILTER_VALIDATE_BOOL),
+    ],
+
+    /*
+    | Paystack (consultations / advice sessions)
+    */
+    'paystack' => [
+        'secret_key' => env('PAYSTACK_SECRET_KEY'),
+        'public_key' => env('PAYSTACK_PUBLIC_KEY'),
+        'currency' => env('PAYSTACK_CURRENCY', 'GHS'),
+        'ask_now_amount' => (int) env('PAYSTACK_ASK_NOW_AMOUNT', 5000), // in pesewas
+    ],
+
+    /*
+    | Firebase Cloud Messaging (push notifications)
+    */
+    'fcm' => [
+        'project_id' => env('FCM_PROJECT_ID'),
+        'service_account_json' => env('FCM_SERVICE_ACCOUNT_JSON'),
+    ],
+
 ];

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/ai_scanner/presentation/ai_scanner_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
-import 'package:mobile/features/placeholders/presentation/placeholder_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
+import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
+import 'package:mobile/shared/ui/network_error_view.dart';
+import 'package:mobile/shared/ui/user_friendly_errors.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/nutrition/meal_macro_row.dart';
+import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS
@@ -19,25 +23,36 @@ class MealLog {
   final String id;
   final String name;
   final String time;
+  /// Raw ISO8601 from server/device for detail formatting.
+  final String eatenAtIso;
   final String category;
+  final int calories;
   final int? protein;
   final int? carbs;
   final int? fat;
   final SafetyStatus status;
   final String? insightMessage;
-  final String imageUrl;
+  final String? imageUrl;
+  final String? imagePath;
+  final String? source;
+  final Map<String, dynamic>? meta;
 
   MealLog({
     required this.id,
     required this.name,
     required this.time,
+    required this.eatenAtIso,
     required this.category,
+    required this.calories,
     this.protein,
     this.carbs,
     this.fat,
     required this.status,
     this.insightMessage,
-    required this.imageUrl,
+    this.imageUrl,
+    this.imagePath,
+    this.source,
+    this.meta,
   });
 }
 
@@ -53,41 +68,137 @@ class DailyNutrition {
   });
 }
 
-// Mock Provider - Replace later with a Dio GET request (e.g. /api/nutrition/history)
 final nutritionHistoryProvider = FutureProvider<List<DailyNutrition>>((ref) async {
-  await Future.delayed(const Duration(milliseconds: 600));
-  return [
-    DailyNutrition(
-      dayLabel: 'Today',
-      totalKcal: 1420,
-      meals: [
-        MealLog(
-          id: '1',
-          name: 'Avocado & Egg Toast',
-          time: '08:30 AM',
-          category: 'Breakfast',
-          protein: 12,
-          carbs: 24,
-          fat: 18,
-          status: SafetyStatus.safe,
-          imageUrl:
-              'https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&fit=crop',
+  try {
+    final repo = ref.read(nutritionRepositoryProvider);
+    final now = DateTime.now();
+    final from =
+        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 14));
+    final to = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    final data = await repo.fetchHistory(from: from, to: to);
+    final rawDays = data['days'];
+    final daysList = rawDays is List ? rawDays : const <dynamic>[];
+
+    final result = <DailyNutrition>[];
+    for (final rawDay in daysList) {
+      if (rawDay is! Map) continue;
+      final d = rawDay.map((k, dynamic v) => MapEntry(k.toString(), v));
+
+      final dateStr = (d['date'] ?? '').toString();
+      final mealsRaw = d['meals'];
+      final mealsList = mealsRaw is List ? mealsRaw : const <dynamic>[];
+
+      final meals = <MealLog>[];
+      for (final rawMeal in mealsList) {
+        if (rawMeal is! Map) continue;
+        final m = rawMeal.map((k, dynamic v) => MapEntry(k.toString(), v));
+
+        final eatenAt = (m['eatenAt'] ?? '').toString();
+        Map<String, dynamic>? meta;
+        final metaRaw = m['meta'];
+        if (metaRaw is Map) {
+          meta = metaRaw.map((k, dynamic v) => MapEntry(k.toString(), v));
+        }
+        final imagePath =
+            (meta?['image_path'] ?? meta?['imagePath'])?.toString();
+
+        final statusStr = (m['safetyStatus'] ?? 'safe').toString().toLowerCase();
+        final status = switch (statusStr) {
+          'alert' => SafetyStatus.alert,
+          'watch' => SafetyStatus.watch,
+          _ => SafetyStatus.safe,
+        };
+
+        final rawSrc = m['source']?.toString().trim();
+        final source =
+            (rawSrc == null || rawSrc.isEmpty) ? null : rawSrc;
+
+        final imRaw = m['insightMessage'];
+        final insightTrimmed = imRaw?.toString().trim();
+        final insightStr =
+            (insightTrimmed == null || insightTrimmed.isEmpty) ? null : insightTrimmed;
+
+        final imgRaw = m['imageUrl'];
+        final imageUrlStr = imgRaw == null
+            ? null
+            : imgRaw.toString().trim().isEmpty
+                ? null
+                : imgRaw.toString();
+
+        meals.add(
+          MealLog(
+            id: (m['id'] ?? '').toString(),
+            name: (m['name'] ?? '').toString(),
+            time: _formatTimeFromIso(eatenAt),
+            eatenAtIso: eatenAt,
+            category: (m['mealType'] ?? 'Meal').toString(),
+            calories: (m['calories'] as int?) ??
+                int.tryParse((m['calories'] ?? '0').toString()) ??
+                0,
+            protein: _parseNullableInt(m['proteinG']),
+            carbs: _parseNullableInt(m['carbsG']),
+            fat: _parseNullableInt(m['fatG']),
+            status: status,
+            insightMessage: insightStr,
+            imageUrl: imageUrlStr,
+            imagePath: imagePath,
+            source: source,
+            meta: meta == null ? null : Map<String, dynamic>.from(meta),
+          ),
+        );
+      }
+
+      final computedTotalKcal =
+          meals.fold<int>(0, (sum, m) => sum + m.calories);
+
+      result.add(
+        DailyNutrition(
+          dayLabel: _prettyDayLabel(dateStr),
+          totalKcal: computedTotalKcal,
+          meals: meals,
         ),
-        MealLog(
-          id: '2',
-          name: 'Mediterranean Quinoa',
-          time: '01:15 PM',
-          category: 'Lunch',
-          status: SafetyStatus.watch,
-          insightMessage:
-              'Slightly high sodium content for today\'s health target.',
-          imageUrl:
-              'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&fit=crop',
-        ),
-      ],
-    ),
-  ];
+      );
+    }
+
+    return result;
+  } catch (_) {
+    return [];
+  }
 });
+
+String _formatTimeFromIso(String iso) {
+  final dt = DateTime.tryParse(iso);
+  if (dt == null) return '';
+  final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final m = dt.minute.toString().padLeft(2, '0');
+  final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+  return '$h:$m $ampm';
+}
+
+int? _parseNullableInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.round();
+  return int.tryParse(v.toString());
+}
+
+String _capitalizeLabel(String s) {
+  final t = s.trim();
+  if (t.isEmpty) return s;
+  return '${t[0].toUpperCase()}${t.substring(1).toLowerCase()}';
+}
+
+String _prettyDayLabel(String dateStr) {
+  final dt = DateTime.tryParse(dateStr);
+  if (dt == null) return dateStr;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final d = DateTime(dt.year, dt.month, dt.day);
+  if (d == today) return 'Today';
+  if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
+  return '${dt.day}/${dt.month}/${dt.year}';
+}
 
 // =====================================================================
 // 2. THE UI SCREEN
@@ -107,8 +218,14 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
   final Color slate800 = const Color(0xFF1E293B);
   final Color dashboardGreen = const Color(0xFF1A5D1A);
 
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -121,21 +238,72 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
         child: Column(
           children: [
             _buildHeader(),
-            _buildFilters(),
             Expanded(
               child: historyState.when(
                 loading: () =>
                     Center(child: CircularProgressIndicator(color: primary)),
-                error: (err, stack) =>
-                    const Center(child: Text('Error loading history')),
-                data: (days) => ListView.builder(
-                  padding:
-                      const EdgeInsets.only(left: 24, right: 24, bottom: 120),
-                  itemCount: days.length,
-                  itemBuilder: (context, index) {
-                    return _buildDailySection(days[index]);
-                  },
+                error: (err, stack) => NetworkErrorView(
+                  title: 'Meal history unavailable',
+                  message: userFriendlyDataLoadMessage(err),
+                  onRetry: () =>
+                      ref.invalidate(nutritionHistoryProvider),
                 ),
+                data: (days) {
+                  Future<void> refreshHistory() async {
+                    ref.invalidate(nutritionHistoryProvider);
+                    await ref.read(nutritionHistoryProvider.future);
+                  }
+
+                  final filtered = _applySearch(days);
+                  if (filtered.isEmpty) {
+                    final q = _searchQuery.trim();
+                    return RefreshIndicator(
+                      color: primary,
+                      onRefresh: refreshHistory,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return SingleChildScrollView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight: constraints.maxHeight,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  q.isEmpty
+                                      ? 'No meals yet.'
+                                      : 'No meals found for "$q".',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blueGrey.shade400,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    color: primary,
+                    onRefresh: refreshHistory,
+                    child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(
+                        left: 24,
+                        right: 24,
+                        bottom: 120,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        return _buildDailySection(context, filtered[index]);
+                      },
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -214,7 +382,7 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
         );
         return;
       case AppTab.profile:
@@ -261,16 +429,6 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
                   ),
                 ],
               ),
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.blueGrey.shade50,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.blueGrey.shade100),
-                ),
-                child: Icon(Icons.tune, color: Colors.blueGrey.shade500, size: 22),
-              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -280,11 +438,22 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
               borderRadius: BorderRadius.circular(12),
             ),
             child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _searchQuery = v),
               decoration: InputDecoration(
                 hintText: 'Search history...',
                 hintStyle:
                     GoogleFonts.plusJakartaSans(color: Colors.blueGrey.shade400),
                 prefixIcon: Icon(Icons.search, color: Colors.blueGrey.shade400),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        icon: Icon(Icons.close, color: Colors.blueGrey.shade400),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 16),
               ),
@@ -295,46 +464,26 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
     );
   }
 
-  Widget _buildFilters() {
-    return SizedBox(
-      height: 70,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        itemCount: _filters.length,
-        itemBuilder: (context, index) {
-          final filter = _filters[index];
-          final isSelected = filter == _selectedFilter;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => setState(() => _selectedFilter = filter),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? primary : Colors.blueGrey.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  border:
-                      isSelected ? null : Border.all(color: Colors.blueGrey.shade100),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  filter,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                    color: isSelected ? Colors.white : Colors.blueGrey.shade500,
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
+  List<DailyNutrition> _applySearch(List<DailyNutrition> days) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return days;
+
+    final out = <DailyNutrition>[];
+    for (final day in days) {
+      final meals = day.meals.where((m) {
+        final name = m.name.toLowerCase();
+        final cat = m.category.toLowerCase();
+        return name.contains(q) || cat.contains(q);
+      }).toList();
+      if (meals.isEmpty) continue;
+
+      final total = meals.fold<int>(0, (sum, m) => sum + m.calories);
+      out.add(DailyNutrition(dayLabel: day.dayLabel, totalKcal: total, meals: meals));
+    }
+    return out;
   }
 
-  Widget _buildDailySection(DailyNutrition daily) {
+  Widget _buildDailySection(BuildContext context, DailyNutrition daily) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -364,43 +513,43 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
             ],
           ),
         ),
-        ...daily.meals.map((meal) => _buildMealItem(meal)),
+        ...daily.meals.map((meal) => _buildMealItem(context, meal)),
         const SizedBox(height: 16),
       ],
     );
   }
 
-  Widget _buildMealItem(MealLog meal) {
+  Widget _buildMealItem(BuildContext context, MealLog meal) {
     Color bgColor;
     Color textColor;
     String statusText;
-    IconData? insightIcon;
 
     switch (meal.status) {
       case SafetyStatus.safe:
         bgColor = const Color(0xFFF0F9F4);
         textColor = const Color(0xFF4F8B6F);
         statusText = 'SAFE';
-        insightIcon = Icons.check_circle;
         break;
       case SafetyStatus.watch:
         bgColor = const Color(0xFFFFF9EB);
         textColor = const Color(0xFFB38B3E);
         statusText = 'WATCH';
-        insightIcon = Icons.info;
         break;
       case SafetyStatus.alert:
         bgColor = const Color(0xFFFFF5F5);
         textColor = const Color(0xFFC16B6B);
         statusText = 'ALERT';
-        insightIcon = null;
         break;
     }
 
-    final isMacro = meal.insightMessage == null &&
-        (meal.protein != null || meal.carbs != null || meal.fat != null);
+    final showMacros =
+        meal.protein != null || meal.carbs != null || meal.fat != null;
 
-    return Container(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showMealDetail(context, meal),
+        child: Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: Colors.blueGrey.shade50)),
@@ -414,7 +563,7 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               image: DecorationImage(
-                image: NetworkImage(meal.imageUrl),
+                image: _mealImageProvider(meal),
                 fit: BoxFit.cover,
               ),
             ),
@@ -471,42 +620,12 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
                     ),
                   ],
                 ),
-                if (meal.insightMessage != null) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: bgColor.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (insightIcon != null) ...[
-                          Icon(insightIcon, size: 16, color: textColor),
-                          const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: Text(
-                            meal.insightMessage!,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              color: textColor,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else if (isMacro) ...[
+                if (showMacros) ...[
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      if (meal.protein != null) _buildMacroText('${meal.protein}g', 'P'),
-                      if (meal.carbs != null) _buildMacroText('${meal.carbs}g', 'C'),
-                      if (meal.fat != null) _buildMacroText('${meal.fat}g', 'F'),
-                    ],
+                  MealMacroRow(
+                    proteinG: meal.protein ?? 0,
+                    carbsG: meal.carbs ?? 0,
+                    fatG: meal.fat ?? 0,
                   ),
                 ],
               ],
@@ -514,33 +633,320 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildMacroText(String value, String label) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 16),
-      child: RichText(
-        text: TextSpan(
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.blueGrey.shade600,
-          ),
-          children: [
-            TextSpan(text: value),
-            const TextSpan(text: ' '),
-            TextSpan(
-              text: label,
-              style: GoogleFonts.plusJakartaSans(
-                fontWeight: FontWeight.normal,
-                color: Colors.blueGrey.shade400,
-              ),
-            ),
-          ],
         ),
       ),
     );
   }
+
+  void _showMealDetail(BuildContext context, MealLog meal) {
+    final loc = MaterialLocalizations.of(context);
+    final eaten = DateTime.tryParse(meal.eatenAtIso);
+    final dateLine = eaten != null
+        ? '${loc.formatFullDate(eaten)} · ${meal.time}'
+        : '${meal.time} · ${meal.category}';
+
+    Color statusBg;
+    Color statusFg;
+    String statusLabel;
+    switch (meal.status) {
+      case SafetyStatus.safe:
+        statusBg = const Color(0xFFF0F9F4);
+        statusFg = const Color(0xFF4F8B6F);
+        statusLabel = 'SAFE';
+        break;
+      case SafetyStatus.watch:
+        statusBg = const Color(0xFFFFF9EB);
+        statusFg = const Color(0xFFB38B3E);
+        statusLabel = 'WATCH';
+        break;
+      case SafetyStatus.alert:
+        statusBg = const Color(0xFFFFF5F5);
+        statusFg = const Color(0xFFC16B6B);
+        statusLabel = 'ALERT';
+        break;
+    }
+
+    final iron = meal.meta?['iron_mg'];
+    final folate = meal.meta?['folate_mcg'];
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final bottomInset = MediaQuery.paddingOf(ctx).bottom;
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.72,
+          minChildSize: 0.42,
+          maxChildSize: 0.94,
+          builder: (_, scrollController) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 6),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.shade200,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            'Meal details',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: slate800,
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.close, color: Colors.blueGrey.shade600),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + bottomInset),
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 10,
+                          child: Image(
+                            image: _mealImageProvider(meal),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        meal.name,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: slate800,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        dateLine,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.blueGrey.shade500,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          Chip(
+                            label: Text(
+                              meal.category.isEmpty ? 'Meal' : meal.category,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: Colors.blueGrey.shade50,
+                          ),
+                          if (meal.source != null)
+                            Chip(
+                              label: Text(
+                                meal.source == 'scan'
+                                    ? 'Scanned'
+                                    : _capitalizeLabel(meal.source!),
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: Colors.blueGrey.shade50,
+                            ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusBg,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: statusFg.withOpacity(0.2)),
+                            ),
+                            child: Text(
+                              statusLabel,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: statusFg,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        '${meal.calories} kcal',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          color: primary,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Macros',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.blueGrey.shade600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _detailMacroCell(
+                              'Protein',
+                              meal.protein != null ? '${meal.protein} g' : '—',
+                            ),
+                          ),
+                          Expanded(
+                            child: _detailMacroCell(
+                              'Carbs',
+                              meal.carbs != null ? '${meal.carbs} g' : '—',
+                            ),
+                          ),
+                          Expanded(
+                            child: _detailMacroCell(
+                              'Fat',
+                              meal.fat != null ? '${meal.fat} g' : '—',
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (iron != null || folate != null) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          'Micronutrients (scan)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.blueGrey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if (iron != null)
+                          Text(
+                            'Iron: $iron mg',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              color: slate800,
+                            ),
+                          ),
+                        if (folate != null)
+                          Text(
+                            'Folate: $folate mcg',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              color: slate800,
+                            ),
+                          ),
+                      ],
+                      if (meal.id.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Log ID · ${meal.id}',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade400,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _detailMacroCell(String title, String value) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.blueGrey.shade500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: slate800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  ImageProvider _mealImageProvider(MealLog meal) {
+    final path = meal.imagePath;
+    if (path != null && path.isNotEmpty) {
+      final f = File(path);
+      if (f.existsSync()) return FileImage(f);
+    }
+
+    final url = meal.imageUrl;
+    if (url != null && url.isNotEmpty) return NetworkImage(url);
+
+    return const NetworkImage(
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=200&fit=crop',
+    );
+  }
+
 }
 

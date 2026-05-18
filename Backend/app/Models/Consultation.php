@@ -6,8 +6,20 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['user_id', 'dietician_name', 'scheduled_time', 'payment_status', 'paystack_reference'])]
+#[Fillable([
+    'user_id',
+    'dietician_name',
+    'advisor_user_id',
+    'scheduled_time',
+    'payment_status',
+    'paystack_reference',
+    'amount',
+    'currency',
+    'paid_at',
+    'session_expires_at',
+])]
 class Consultation extends Model
 {
     use HasFactory;
@@ -16,13 +28,26 @@ class Consultation extends Model
     {
         return [
             'scheduled_time' => 'datetime',
+            'paid_at' => 'datetime',
+            'session_expires_at' => 'datetime',
+            'amount' => 'integer',
         ];
     }
 
     // --- Relationships ---
-    
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function messages(): HasMany
+    {
+        return $this->hasMany(ConsultationMessage::class);
+    }
+
+    public function advisor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'advisor_user_id');
     }
 }

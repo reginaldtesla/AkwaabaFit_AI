@@ -15,6 +15,8 @@ class SyncStepsRequest extends FormRequest
     {
         return [
             'step_count' => ['required', 'integer', 'min:0'],
+            // Optional backfill for daily snapshots (e.g. yesterday).
+            'log_date' => ['nullable', 'date'],
         ];
     }
 }

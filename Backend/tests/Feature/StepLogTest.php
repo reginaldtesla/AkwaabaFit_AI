@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\DailyStepLog;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -24,10 +24,10 @@ class StepLogTest extends TestCase
         ]);
 
         $response->assertStatus(200)
-                 ->assertJson([
-                     'status' => 'success',
-                     'message' => 'Steps synced successfully',
-                 ]);
+            ->assertJson([
+                'status' => 'success',
+                'message' => 'Steps synced successfully',
+            ]);
 
         $this->assertDatabaseHas('daily_step_logs', [
             'user_id' => $user->id,
@@ -58,8 +58,43 @@ class StepLogTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/leaderboard/daily');
 
         $response->assertStatus(200)
-                 ->assertJsonFragment([
-                     'name' => 'Champion User',
-                 ]);
+            ->assertJsonFragment([
+                'name' => 'Champion User',
+            ]);
+    }
+
+    public function test_user_can_fetch_their_daily_rank(): void
+    {
+        Cache::flush();
+
+        $user = User::factory()->create([
+            'name' => 'Me',
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        $other = User::factory()->create([
+            'name' => 'Other',
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $user->id,
+            'step_count' => 5000,
+            'log_date' => now()->toDateString(),
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $other->id,
+            'step_count' => 8000,
+            'log_date' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/leaderboard/daily/me');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('optedIn', true)
+            ->assertJsonPath('stepsToday', 5000)
+            ->assertJsonPath('rank', 2)
+            ->assertJsonPath('user.location', 'Accra');
     }
 }

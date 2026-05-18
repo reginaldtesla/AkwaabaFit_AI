@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,12 +8,23 @@ import 'package:dio/dio.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/offline/offline_prefs.dart';
+import 'package:mobile/shared/offline/sqlite_offline_db.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // --- Placeholder for your actual Auth logic ---
 // This provider checks secure storage for the Sanctum token and profile completion.
 final authInitializationProvider = FutureProvider<String>((ref) async {
   const storage = FlutterSecureStorage();
-  final token = await storage.read(key: 'sanctum_token');
+  String? token;
+  try {
+    token = await storage
+        .read(key: 'sanctum_token')
+        .timeout(const Duration(seconds: 8), onTimeout: () => null);
+  } catch (_) {
+    token = null;
+  }
 
   if (token == null || token.isEmpty) {
     await Future.delayed(const Duration(seconds: 3));
@@ -23,7 +35,7 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
   try {
     final dio = Dio(
       BaseOptions(
-        baseUrl: 'http://10.0.2.2:8000/api',
+        baseUrl: AppConfig.apiBaseUrl,
         connectTimeout: Duration(seconds: 5),
         receiveTimeout: Duration(seconds: 5),
       ),
@@ -42,13 +54,31 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
     final user = response.data;
     final profileCompleted = user['profile_completed'] == true;
 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(OfflinePrefsKeys.profileCompleteCached, profileCompleted);
+    } catch (_) {}
+
     await Future.delayed(const Duration(seconds: 3));
     return profileCompleted
         ? 'authenticated_profile_complete'
         : 'authenticated_profile_incomplete';
   } catch (e) {
-    // If we can't check profile, assume it's incomplete to be safe
     await Future.delayed(const Duration(seconds: 3));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(OfflinePrefsKeys.profileCompleteCached) == true) {
+        return 'authenticated_profile_complete';
+      }
+      final local = await SqliteOfflineDb.getInstance().then((db) => db.getProfileCache());
+      if (local != null) {
+        final h = local['height'];
+        final w = local['weight'];
+        final hasBasics = (h != null && '$h'.trim().isNotEmpty) ||
+            (w != null && '$w'.trim().isNotEmpty);
+        if (hasBasics) return 'authenticated_profile_complete';
+      }
+    } catch (_) {}
     return 'authenticated_profile_incomplete';
   }
 });
@@ -72,6 +102,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   AnimationController? _progressController;
   bool _hasNavigated = false;
 
+  /// First-install welcome sheet blocks routing until dismissed once.
+  bool _welcomePrefsLoaded = false;
+  bool _showFirstRunWelcome = false;
+  String? _pendingAuthStatus;
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +115,100 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       vsync: this,
     );
     _progressController?.repeat();
+
+    // listen() in build only runs on *changes* after subscribe — if auth finishes
+    // first we can miss navigation. listenManual + fireImmediately handles the
+    // current AsyncValue and every later transition; error state still advances.
+    ref.listenManual<AsyncValue<String>>(
+      authInitializationProvider,
+      (previous, next) {
+        next.when(
+          data: (status) {
+            if (!mounted || _hasNavigated) return;
+            _scheduleNavigation(status);
+          },
+          loading: () {},
+          error: (Object _, StackTrace _) {
+            if (!mounted || _hasNavigated) return;
+            _scheduleNavigation('not_authenticated');
+          },
+        );
+      },
+      fireImmediately: true,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      var seenWelcome = true;
+      try {
+        final prefs = await SharedPreferences.getInstance().timeout(
+          const Duration(seconds: 5),
+        );
+        seenWelcome = prefs.getBool('akwaaba_welcome_v1') ?? false;
+      } catch (_) {
+        seenWelcome = true;
+      }
+      if (!mounted) return;
+      setState(() {
+        _welcomePrefsLoaded = true;
+        _showFirstRunWelcome = !seenWelcome;
+      });
+      if (seenWelcome && _pendingAuthStatus != null) {
+        final status = _pendingAuthStatus!;
+        _pendingAuthStatus = null;
+        _navigateForAuthStatus(status);
+      }
+    });
+  }
+
+  Future<void> _dismissFirstRunWelcome() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('akwaaba_welcome_v1', true);
+    if (!mounted) return;
+    setState(() {
+      _showFirstRunWelcome = false;
+    });
+    final pending = _pendingAuthStatus;
+    if (pending != null) {
+      _pendingAuthStatus = null;
+      _navigateForAuthStatus(pending);
+    }
+  }
+
+  void _scheduleNavigation(String status) {
+    if (!_welcomePrefsLoaded) {
+      _pendingAuthStatus = status;
+      return;
+    }
+    if (_showFirstRunWelcome) {
+      _pendingAuthStatus = status;
+      return;
+    }
+    _navigateForAuthStatus(status);
+  }
+
+  void _navigateForAuthStatus(String status) {
+    if (_hasNavigated) return;
+    _hasNavigated = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      switch (status) {
+        case 'not_authenticated':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const AuthScreen()),
+          );
+          break;
+        case 'authenticated_profile_incomplete':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HealthProfileScreen()),
+          );
+          break;
+        case 'authenticated_profile_complete':
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          );
+          break;
+      }
+    });
   }
 
   @override
@@ -90,37 +219,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Listen to the auth check. Once it finishes, navigate.
-    ref.listen<AsyncValue<String>>(authInitializationProvider, (
-      previous,
-      next,
-    ) {
-      next.whenData((status) {
-        if (_hasNavigated) return;
-        _hasNavigated = true;
-
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          switch (status) {
-            case 'not_authenticated':
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const AuthScreen()),
-              );
-              break;
-            case 'authenticated_profile_incomplete':
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const HealthProfileScreen()),
-              );
-              break;
-            case 'authenticated_profile_complete':
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const DashboardScreen()),
-              );
-              break;
-          }
-        });
-      });
-    });
-
     return Scaffold(
       backgroundColor: softWhite,
       body: Stack(
@@ -263,6 +361,77 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               ],
             ),
           ),
+
+          if (_welcomePrefsLoaded && _showFirstRunWelcome)
+            Positioned.fill(
+              child: Material(
+                color: softWhite.withValues(alpha: 0.97),
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 24),
+                        Icon(Icons.travel_explore_rounded,
+                            size: 48, color: forest),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Welcome',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: slate800,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'AkwaabaFit works best when your phone can reach '
+                          'your clinic server at least once—so you can sign in '
+                          'and sync your profile.',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            height: 1.5,
+                            color: slate500,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'After that, key screens remember your last data '
+                          'when signal dips—your steps still update from your '
+                          'phone.',
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            height: 1.5,
+                            color: slate500,
+                          ),
+                        ),
+                        const Spacer(),
+                        FilledButton(
+                          onPressed: _dismissFirstRunWelcome,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: forest,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Continue',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -362,7 +531,7 @@ class AppScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('AkwaabaFit AI')),
+      appBar: AppBar(title: const Text('AkwaabaFIT_AI')),
       body: const Center(child: Text('Welcome to the main app!')),
     );
   }

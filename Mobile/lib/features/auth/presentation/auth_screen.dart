@@ -5,8 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'forgot_password_screen.dart';
 import 'health_profile_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/offline/offline_prefs.dart';
+import 'package:mobile/shared/offline/offline_session_cleanup.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & API LOGIC (RIVERPOD + DIO)
@@ -19,9 +24,7 @@ final authProvider = AsyncNotifierProvider<AuthNotifier, void>(
 class AuthNotifier extends AsyncNotifier<void> {
   final _dio = Dio(
     BaseOptions(
-      baseUrl: 'http://10.0.2.2:8000/api', // For Android emulator
-      // baseUrl: 'http://127.0.0.1:8000/api', // For iOS simulator
-      // baseUrl: 'http://192.168.88.243:8000/api', // For physical device (use your PC's IP)
+      baseUrl: AppConfig.apiBaseUrl,
       connectTimeout: Duration(seconds: 10),
       receiveTimeout: Duration(seconds: 10),
     ),
@@ -33,24 +36,32 @@ class AuthNotifier extends AsyncNotifier<void> {
 
   Future<bool> authenticate({
     required bool isLogin,
-    required String email,
     required String password,
+    /// Sign in: username or phone number (any formatting for phone).
+    String? login,
+    /// Sign up fields.
     String? name,
+    String? email,
+    String? username,
+    String? phone,
   }) async {
     state = const AsyncValue.loading();
     try {
       final endpoint = isLogin ? '/login' : '/register';
-      final data = isLogin
+      final Map<String, dynamic> data = isLogin
           ? {
-              'email': email,
+              'login': login!.trim(),
               'password': password,
               'device_name': 'AkwaabaFit Flutter (${Platform.operatingSystem})',
             }
           : {
               'name': name,
-              'email': email,
+              'username': username!.trim(),
+              'email': email!.trim(),
               'password': password,
               'password_confirmation': password,
+              if (phone != null && phone.trim().isNotEmpty)
+                'phone': phone.trim(),
             };
 
       // Ensure headers accept JSON so Laravel doesn't return HTML errors
@@ -72,12 +83,43 @@ class AuthNotifier extends AsyncNotifier<void> {
 
       await _storage.write(key: 'sanctum_token', value: token.toString());
 
+      final userRaw = response.data['user'];
+      final newId = userRaw is Map ? userRaw['id']?.toString() : null;
+      if (newId != null && newId.isNotEmpty) {
+        await OfflineSessionCleanup.onAuthenticatedUserId(newId);
+      }
+
       state = const AsyncValue.data(null);
       return true; // Success
     } on DioException catch (e) {
-      // Extract error message from Laravel
-      final message =
-          e.response?.data['message'] ?? 'Connection error. Please try again.';
+      final status = e.response?.statusCode;
+      final data = e.response?.data;
+
+      String? message;
+      if (data is Map) {
+        final map = data.map((k, v) => MapEntry(k.toString(), v));
+        final m = map['message'];
+        if (m is String && m.trim().isNotEmpty) message = m.trim();
+
+        // Laravel validation errors: { errors: { field: [..] } }
+        final errors = map['errors'];
+        if (message == null && errors is Map && errors.isNotEmpty) {
+          final firstKey = errors.keys.first;
+          final firstVal = errors[firstKey];
+          if (firstVal is List && firstVal.isNotEmpty) {
+            message = firstVal.first.toString();
+          }
+        }
+      }
+
+      // Friendly fallbacks for common auth failures
+      message ??= switch (status) {
+        401 => 'Incorrect username, phone number, or password.',
+        404 => 'Account not found. Please sign up.',
+        422 => 'Please check your details and try again.',
+        _ => 'Connection error. Please try again.',
+      };
+
       state = AsyncValue.error(message, StackTrace.current);
       return false; // Failed
     }
@@ -104,6 +146,33 @@ class AuthNotifier extends AsyncNotifier<void> {
       return false;
     }
   }
+
+  /// Revokes Sanctum tokens on the server (best-effort) and clears local storage.
+  Future<void> signOut() async {
+    final token = await _storage.read(key: 'sanctum_token');
+    if (token != null && token.toString().trim().isNotEmpty) {
+      try {
+        await _dio.post<void>(
+          '/logout',
+          options: Options(
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          ),
+        );
+      } on DioException {
+        // Offline or expired token — still clear locally.
+      }
+    }
+    await OfflineSessionCleanup.markSignedOut();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(OfflinePrefsKeys.profileCompleteCached);
+    } catch (_) {}
+    await _storage.delete(key: 'sanctum_token');
+    state = const AsyncValue.data(null);
+  }
 }
 
 // =====================================================================
@@ -127,13 +196,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _isLogin = true;
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _loginIdentifierController = TextEditingController();
   final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
 
   @override
   void dispose() {
     _nameController.dispose();
+    _loginIdentifierController.dispose();
     _emailController.dispose();
+    _usernameController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -141,32 +216,38 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final success = await ref
-        .read(authProvider.notifier)
-        .authenticate(
+    // Dismiss keyboard + clear any prior SnackBars.
+    FocusManager.instance.primaryFocus?.unfocus();
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    final success = await ref.read(authProvider.notifier).authenticate(
           isLogin: _isLogin,
-          email: _emailController.text.trim(),
           password: _passwordController.text,
+          login: _isLogin ? _loginIdentifierController.text.trim() : null,
           name: _isLogin ? null : _nameController.text.trim(),
+          email: _isLogin ? null : _emailController.text.trim(),
+          username: _isLogin ? null : _usernameController.text.trim(),
+          phone: _isLogin ? null : _phoneController.text.trim(),
         );
 
     if (!mounted) return;
 
     if (success) {
       if (_isLogin) {
-        // After login, check if profile is completed
-        final profileCompleted = await ref
-            .read(authProvider.notifier)
-            .checkProfileCompleted();
-        if (profileCompleted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const DashboardScreen()),
-          );
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HealthProfileScreen()),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login successful. Welcome back!'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Always take the user into the app after successful login.
+        // (Profile completion can be handled as an in-app prompt.)
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        );
       } else {
         // After signup, go to health profile setup
         ScaffoldMessenger.of(context).showSnackBar(
@@ -182,6 +263,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           MaterialPageRoute(builder: (_) => HealthProfileScreen()),
         );
       }
+    } else {
+      // AuthNotifier already sets a user-friendly error message; keep a simple fallback too.
+      final err = ref.read(authProvider).error?.toString();
+      if (err != null && err.isNotEmpty) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Login failed. Please try again.'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -256,20 +348,96 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 icon: Icons.person_outline,
                               ),
                               const SizedBox(height: 20),
+                              _buildInputField(
+                                label: 'Email',
+                                hint: 'name@example.com',
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                validator: (value) {
+                                  final v = value?.trim() ?? '';
+                                  if (v.isEmpty) return 'Required';
+                                  if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                      .hasMatch(v)) {
+                                    return 'Enter a valid email';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 20),
+                              _buildInputField(
+                                label: 'Username',
+                                hint: 'your_username',
+                                controller: _usernameController,
+                                icon: Icons.alternate_email,
+                                validator: (value) {
+                                  final v = value?.trim() ?? '';
+                                  if (v.isEmpty) return 'Username is required';
+                                  if (v.length < 3) return 'At least 3 characters';
+                                  if (!RegExp(r'^[a-zA-Z0-9._-]+$').hasMatch(v)) {
+                                    return 'Letters, numbers, . _ - only';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 20),
+                              _buildInputField(
+                                label: 'Mobile (optional)',
+                                hint: '+233 XX XXX XXXX',
+                                controller: _phoneController,
+                                icon: Icons.phone_android_outlined,
+                                keyboardType: TextInputType.phone,
+                                validator: (value) {
+                                  final raw = value?.trim() ?? '';
+                                  if (raw.isEmpty) return null;
+                                  final digits =
+                                      raw.replaceAll(RegExp(r'\D'), '');
+                                  if (digits.length < 8) {
+                                    return 'Enter a valid phone number';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 20),
                             ],
-                            _buildInputField(
-                              label: 'Email Address',
-                              hint: 'name@medical.com',
-                              controller: _emailController,
-                              isEmail: true,
-                            ),
-                            const SizedBox(height: 20),
+                            if (_isLogin) ...[
+                              _buildInputField(
+                                label: 'Username or mobile number',
+                                hint: 'username or +233…',
+                                controller: _loginIdentifierController,
+                                keyboardType: TextInputType.text,
+                                validator: (value) {
+                                  final v = value?.trim() ?? '';
+                                  if (v.isEmpty) return 'Required';
+                                  if (v.length < 2) return 'Too short';
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 20),
+                            ],
                             _buildInputField(
                               label: 'Password',
                               hint: '••••••••',
                               controller: _passwordController,
                               isPassword: true,
                               showForgot: _isLogin,
+                              onForgotPressed: _isLogin
+                                  ? () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => const ForgotPasswordScreen(),
+                                        ),
+                                      );
+                                    }
+                                  : null,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Required';
+                                }
+                                if (!_isLogin && value.length < 8) {
+                                  return 'At least 8 characters';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 32),
 
@@ -321,9 +489,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       ),
 
                       const SizedBox(height: 32),
-                      _buildDivider(),
-                      const SizedBox(height: 24),
-                      _buildFaceIdButton(),
                       const SizedBox(height: 48),
                       _buildFooter(),
                     ],
@@ -358,7 +523,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          'AkwaabaFit AI',
+          'AkwaabaFIT_AI',
           style: GoogleFonts.inter(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -445,9 +610,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     required String hint,
     required TextEditingController controller,
     bool isPassword = false,
-    bool isEmail = false,
     bool showForgot = false,
+    VoidCallback? onForgotPressed,
     IconData? icon,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,15 +634,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 ),
               ),
             ),
-            if (showForgot)
+            if (showForgot && onForgotPressed != null)
               Padding(
                 padding: const EdgeInsets.only(right: 4, bottom: 6),
-                child: Text(
-                  'Forgot?',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: primary.withOpacity(0.8),
+                child: TextButton(
+                  onPressed: onForgotPressed,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Forgot?',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: primary.withOpacity(0.8),
+                    ),
                   ),
                 ),
               ),
@@ -484,10 +659,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         TextFormField(
           controller: controller,
           obscureText: isPassword,
-          keyboardType: isEmail
-              ? TextInputType.emailAddress
-              : TextInputType.text,
-          validator: (value) => value!.isEmpty ? 'Required' : null,
+          keyboardType: keyboardType,
+          validator:
+              validator ?? ((value) => value!.isEmpty ? 'Required' : null),
           style: GoogleFonts.inter(color: slate800),
           decoration: InputDecoration(
             hintText: hint,
@@ -519,99 +693,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
-  Widget _buildDivider() {
-    return Row(
-      children: [
-        Expanded(child: Divider(color: Colors.blueGrey.shade200)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'SAFETY FIRST',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 2.0,
-              color: Colors.blueGrey.shade300,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: Colors.blueGrey.shade200)),
-      ],
-    );
-  }
-
-  Widget _buildFaceIdButton() {
-    return Container(
-      width: double.infinity,
-      height: 56,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.shade200),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {}, // Future FaceID Implementation
-          borderRadius: BorderRadius.circular(12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.face, color: primary.withOpacity(0.7)),
-              const SizedBox(width: 12),
-              Text(
-                'Sign in with FaceID',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.blueGrey.shade600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildFooter() {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.green.shade50,
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.green.shade100),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.verified_user, color: Colors.green.shade600, size: 14),
-              const SizedBox(width: 8),
-              Text(
-                'HIPAA COMPLIANT PROTOCOL',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
-                  color: Colors.green.shade700,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          'Your data is protected by end-to-end encryption. By logging in, you agree to our Terms of Care.',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.inter(
-            fontSize: 11,
-            height: 1.5,
-            color: Colors.blueGrey.shade400,
-          ),
-        ),
-      ],
+    return Text(
+      'Your data is protected by end-to-end encryption. By logging in, you agree to our Terms of Care.',
+      textAlign: TextAlign.center,
+      style: GoogleFonts.inter(
+        fontSize: 11,
+        height: 1.5,
+        color: Colors.blueGrey.shade400,
+      ),
     );
   }
 
