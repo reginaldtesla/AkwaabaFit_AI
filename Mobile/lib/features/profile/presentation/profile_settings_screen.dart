@@ -416,11 +416,6 @@ class ProfileSettingsScreen extends ConsumerWidget {
               letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Premium Member • ID: ${data.membershipId}',
-            style: GoogleFonts.inter(fontSize: 14, color: textLight),
-          ),
         ],
       ),
     );

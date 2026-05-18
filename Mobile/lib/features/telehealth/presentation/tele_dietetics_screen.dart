@@ -184,10 +184,7 @@ class TeleDieteticsScreen extends ConsumerWidget {
       backgroundColor: bgLight.withValues(alpha: 0.9),
       elevation: 0,
       scrolledUnderElevation: 0,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back, color: textMain),
-        onPressed: () => Navigator.pop(context),
-      ),
+      automaticallyImplyLeading: false,
       title: Text(
         'Nutrition Advice',
         style: GoogleFonts.spaceGrotesk(

@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AkwaabaFIT_AI',
+      title: 'AkwaabaFit',
       theme: ThemeData(primarySwatch: Colors.green),
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
