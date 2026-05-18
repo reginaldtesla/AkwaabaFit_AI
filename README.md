@@ -4,6 +4,47 @@ Culturally adapted fitness and nutrition app for Ghanaians. Users track activity
 
 **Stack:** Laravel 12 API · Flutter mobile app · YOLOv8 food model training pipeline
 
+## What the app is supposed to do
+
+AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and get professional nutrition guidance** in one mobile app. It is built around local food and everyday life—not generic Western meal plans.
+
+### For everyday users
+
+1. **Sign up and set a health profile** — Goals, body metrics, calorie and macro targets, and preferences so the dashboard can personalize summaries.
+2. **See daily wellness at a glance (Home)** — Calories eaten vs burned, step progress, weather, and short insights to stay on track.
+3. **Track movement (Stride)** — Count steps with the phone, sync activity in the background, view today’s effort, and compare on a daily leaderboard.
+4. **Log meals quickly (Food scanner)** — Photograph Ghanaian dishes (jollof, banku, waakye, etc.); the app detects the food on the device and logs calories and macros to **Nutrition history**. Works offline first, then syncs when online.
+5. **Review eating over time (History)** — Browse meals by day with safety labels and protein / carbs / fat where available.
+6. **Get expert help (Advice)** — Choose a listed dietitian, pay via Paystack, book **now** or for a **scheduled time**, then chat during the live session. Reminders fire before the session starts; chat is only open in the paid live window.
+7. **Manage account (Profile)** — Update details, photo, goals, and sync data when back on the network.
+
+### For dietitians / nutrition advisors
+
+- **Apply in the app** — Submit Ghana Card, certificates, photo, and CV for admin review.
+- **After approval** — Appear in the public list with admin-set rating and hourly rate; receive paid consultations and reply in chat (app or web advisor login).
+
+### For administrators
+
+- **Review applications** — Approve or reject dietitian sign-ups and set listing rating and price.
+- **Oversee advice** — Access admin tools for application documents and consultation oversight.
+
+### What the app is not trying to do (current scope)
+
+- It does **not** replace a doctor for emergencies or clinical diagnosis.
+- Food scanner macros are **reference values per dish type**, not a lab analysis of the exact portion on the plate.
+- There is no social feed, wearable-only mode, or full AI-generated workout library in this version.
+
+### Main user journeys (summary)
+
+| I want to… | Where in the app |
+|------------|------------------|
+| Know if I’m on track today | **Home** |
+| Record what I ate | **Scanner** → **History** |
+| Walk more and see steps | **Stride** |
+| Talk to a dietitian | **Advice** → pay → **chat** |
+| Change my goals or photo | **Profile** |
+| Become a listed dietitian | **Profile** / **Advice** → **Apply** |
+
 ## Project structure
 
 The repository contains three main parts:
@@ -27,7 +68,7 @@ The repository contains three main parts:
 | **Advice chat** | Client + advisor chat with polling; session phases (`waiting` → `live` → `ended`); chat blocked until scheduled start; local reminders (−2h, −30m, at start) + inbox notifications |
 | **Dietitian application** | In-app form: Ghana card, certificate, photo, CV, all required fields; camera/gallery for photo; status from API |
 | **Profile** | Edit profile, avatar upload, goals, calorie/macro targets, sync controls |
-| **Offline** | Drift/SQLite for meals, steps, nutrition food catalog cache, outbox sync |
+| **Offline** | SQLite for meals, steps, nutrition food catalog cache, outbox sync |
 | **Push** | Firebase Cloud Messaging device token registration |
 
 **Main tabs:** Home · History (nutrition) · Stride · Advice · Profile
@@ -86,7 +127,7 @@ Approved applications feed the mobile dietitian list (photo, rating, hourly rate
 flowchart LR
   subgraph mobile [Flutter App]
     ONNX[ONNX Food Detector]
-    SQLite[(SQLite / Drift)]
+    SQLite[(SQLite offline DB)]
     UI[Screens]
     UI --> ONNX
     UI --> SQLite
