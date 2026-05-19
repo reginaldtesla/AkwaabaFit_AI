@@ -85,7 +85,7 @@ class ConsultationPaymentController extends Controller
             'amount' => $amount,
             'currency' => $currency,
             'reference' => $reference,
-            'callback_url' => rtrim($request->getSchemeAndHttpHost(), '/').'/paystack/return',
+            'callback_url' => rtrim($request->getSchemeAndHttpHost(), '/').'/paystack/return?reference='.urlencode($reference),
             'metadata' => [
                 'consultation_id' => $consultation->id,
                 'type' => $data['type'],

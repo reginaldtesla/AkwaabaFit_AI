@@ -26,4 +26,11 @@ return [
         'message' => env('APP_IOS_UPDATE_MESSAGE', 'A new version of AkwaabaFit is available.'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Deep link after Paystack payment (mobile app auto-return)
+    |--------------------------------------------------------------------------
+    */
+    'deep_link_scheme' => env('MOBILE_DEEP_LINK_SCHEME', 'akwaabafit'),
+
 ];

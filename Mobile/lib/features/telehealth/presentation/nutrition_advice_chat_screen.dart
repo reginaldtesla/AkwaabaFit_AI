@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/telehealth/data/tele_dietetics_api.dart';
 import 'package:mobile/features/telehealth/presentation/consultation_session_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:mobile/shared/payments/paystack_payment_launcher.dart';
 
 class NutritionAdviceChatScreen extends StatefulWidget {
   const NutritionAdviceChatScreen({
@@ -200,31 +200,15 @@ class _NutritionAdviceChatScreenState extends State<NutritionAdviceChatScreen> {
       type: 'ask_now',
       consultationId: widget.consultationId,
     );
-    if (init == null) return;
-    final ok = await launchUrl(Uri.parse(init.authorizationUrl), mode: LaunchMode.externalApplication);
-    if (!ok || !mounted) return;
+    if (init == null || !mounted) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Complete payment'),
-          content: const Text('After payment, tap “I’ve paid” to continue chatting.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('I’ve paid'),
-            ),
-          ],
-        );
-      },
+    final result = await PaystackPaymentLauncher.instance.launchAndWait(
+      authorizationUrl: init.authorizationUrl,
+      reference: init.reference,
+      consultationId: init.consultationId,
+      flow: PaystackPaymentFlow.renewExistingChat,
     );
-    if (confirmed != true) return;
-    await _api.verifyPayment(reference: init.reference);
+    if (!mounted || result == null || !result.paid) return;
     await _load();
   }
 

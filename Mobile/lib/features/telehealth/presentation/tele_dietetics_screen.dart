@@ -12,8 +12,8 @@ import 'package:mobile/features/telehealth/presentation/nutrition_advice_inbox_s
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/notifications/local_notification_service.dart';
 import 'dart:async' show unawaited;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
+import 'package:mobile/shared/payments/paystack_payment_launcher.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS
@@ -556,34 +556,16 @@ class TeleDieteticsScreen extends ConsumerWidget {
       );
       if (init == null) throw Exception('Could not start payment.');
 
-      final uri = Uri.parse(init.authorizationUrl);
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok) throw Exception('Could not open Paystack checkout.');
-
-      if (!context.mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            title: const Text('Complete payment'),
-            content: const Text('After payment, tap “I’ve paid” to continue.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('I’ve paid'),
-              ),
-            ],
-          );
-        },
+      final result = await PaystackPaymentLauncher.instance.launchAndWait(
+        authorizationUrl: init.authorizationUrl,
+        reference: init.reference,
+        consultationId: init.consultationId,
+        flow: PaystackPaymentFlow.askNowOpenChat,
       );
-      if (confirmed != true) return;
-
-      final paid = await api.verifyPayment(reference: init.reference);
-      if (!paid) {
+      if (result == null) {
+        throw Exception('Could not open Paystack checkout.');
+      }
+      if (!result.paid) {
         messenger.showSnackBar(
           SnackBar(
             content: Text(
@@ -601,7 +583,7 @@ class TeleDieteticsScreen extends ConsumerWidget {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => NutritionAdviceChatScreen(
-            consultationId: init.consultationId,
+            consultationId: result.consultationId,
             professionalName: dietitian.name,
             advisorUserId: dietitian.advisorUserId,
           ),
@@ -655,34 +637,16 @@ class TeleDieteticsScreen extends ConsumerWidget {
       );
       if (init == null) throw Exception('Could not start payment.');
 
-      final uri = Uri.parse(init.authorizationUrl);
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok) throw Exception('Could not open Paystack checkout.');
-
-      if (!context.mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            title: const Text('Complete payment'),
-            content: const Text('After payment, tap “I’ve paid” to schedule reminders.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('I’ve paid'),
-              ),
-            ],
-          );
-        },
+      final result = await PaystackPaymentLauncher.instance.launchAndWait(
+        authorizationUrl: init.authorizationUrl,
+        reference: init.reference,
+        consultationId: init.consultationId,
+        flow: PaystackPaymentFlow.scheduleWithReminders,
       );
-      if (confirmed != true) return;
-
-      final paid = await api.verifyPayment(reference: init.reference);
-      if (!paid) {
+      if (result == null) {
+        throw Exception('Could not open Paystack checkout.');
+      }
+      if (!result.paid) {
         messenger.showSnackBar(
           SnackBar(
             content: Text(

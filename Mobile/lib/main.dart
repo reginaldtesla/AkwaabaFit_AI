@@ -15,6 +15,7 @@ import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 import 'package:mobile/shared/app_update/app_update_banner.dart';
 import 'package:mobile/shared/app_update/app_update_provider.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
+import 'package:mobile/shared/payments/paystack_payment_launcher.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,6 +64,7 @@ class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSync
   @override
   void initState() {
     super.initState();
+    PaystackPaymentLauncher.instance.ensureInitialized();
 
     // Attempt a sync on app start.
     Future.microtask(() async {
