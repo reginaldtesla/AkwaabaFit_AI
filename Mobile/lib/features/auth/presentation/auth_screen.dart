@@ -8,6 +8,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'forgot_password_screen.dart';
 import 'health_profile_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/auth/sanctum_token_storage.dart';
+import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
+import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
 import 'package:mobile/shared/offline/offline_session_cleanup.dart';
@@ -16,6 +19,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 // =====================================================================
 // 1. STATE MANAGEMENT & API LOGIC (RIVERPOD + DIO)
 // =====================================================================
+
+/// Result of a successful login or registration.
+class AuthSuccess {
+  const AuthSuccess({required this.profileCompleted});
+
+  final bool profileCompleted;
+}
 
 final authProvider = AsyncNotifierProvider<AuthNotifier, void>(
   AuthNotifier.new,
@@ -34,7 +44,7 @@ class AuthNotifier extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
 
-  Future<bool> authenticate({
+  Future<AuthSuccess?> authenticate({
     required bool isLogin,
     required String password,
     /// Sign in: username or phone number (any formatting for phone).
@@ -78,10 +88,20 @@ class AuthNotifier extends AsyncNotifier<void> {
           'Authentication succeeded but no token was returned by the server.',
           StackTrace.current,
         );
-        return false;
+        return null;
       }
 
-      await _storage.write(key: 'sanctum_token', value: token.toString());
+      await _storage.write(key: sanctumTokenKey, value: token.toString());
+
+      // Confirm token is readable before the UI navigates (avoids dashboard → login flash).
+      final persisted = await readSanctumToken(storage: _storage);
+      if (persisted == null) {
+        state = AsyncValue.error(
+          'Signed in, but this device could not save your session. Try again.',
+          StackTrace.current,
+        );
+        return null;
+      }
 
       final userRaw = response.data['user'];
       final newId = userRaw is Map ? userRaw['id']?.toString() : null;
@@ -89,8 +109,20 @@ class AuthNotifier extends AsyncNotifier<void> {
         await OfflineSessionCleanup.onAuthenticatedUserId(newId);
       }
 
+      var profileCompleted = false;
+      if (userRaw is Map) {
+        profileCompleted = userRaw['profile_completed'] == true;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(
+            OfflinePrefsKeys.profileCompleteCached,
+            profileCompleted,
+          );
+        } catch (_) {}
+      }
+
       state = const AsyncValue.data(null);
-      return true; // Success
+      return AuthSuccess(profileCompleted: profileCompleted);
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       final data = e.response?.data;
@@ -121,13 +153,13 @@ class AuthNotifier extends AsyncNotifier<void> {
       };
 
       state = AsyncValue.error(message, StackTrace.current);
-      return false; // Failed
+      return null;
     }
   }
 
   Future<bool> checkProfileCompleted() async {
     try {
-      final token = await _storage.read(key: 'sanctum_token');
+      final token = await readSanctumToken(storage: _storage);
       if (token == null) return false;
 
       final response = await _dio.get(
@@ -149,7 +181,7 @@ class AuthNotifier extends AsyncNotifier<void> {
 
   /// Revokes Sanctum tokens on the server (best-effort) and clears local storage.
   Future<void> signOut() async {
-    final token = await _storage.read(key: 'sanctum_token');
+    final token = await readSanctumToken(storage: _storage);
     if (token != null && token.toString().trim().isNotEmpty) {
       try {
         await _dio.post<void>(
@@ -170,7 +202,7 @@ class AuthNotifier extends AsyncNotifier<void> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(OfflinePrefsKeys.profileCompleteCached);
     } catch (_) {}
-    await _storage.delete(key: 'sanctum_token');
+    await _storage.delete(key: sanctumTokenKey);
     state = const AsyncValue.data(null);
   }
 }
@@ -220,7 +252,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     FocusManager.instance.primaryFocus?.unfocus();
     ScaffoldMessenger.of(context).clearSnackBars();
 
-    final success = await ref.read(authProvider.notifier).authenticate(
+    final result = await ref.read(authProvider.notifier).authenticate(
           isLogin: _isLogin,
           password: _passwordController.text,
           login: _isLogin ? _loginIdentifierController.text.trim() : null,
@@ -232,37 +264,49 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     if (!mounted) return;
 
-    if (success) {
-      if (_isLogin) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login successful. Welcome back!'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+    if (result != null) {
+      ref.invalidate(sanctumTokenReadyProvider);
+      ref.invalidate(dashboardDataProvider);
 
-        // Always take the user into the app after successful login.
-        // (Profile completion can be handled as an in-app prompt.)
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-      } else {
-        // After signup, go to health profile setup
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Account created successfully. Let\'s set up your health profile.',
+      final destination = result.profileCompleted
+          ? const DashboardScreen()
+          : const HealthProfileScreen();
+
+      // Navigate first — snackbar on the auth screen context often never appears
+      // on the dashboard after the route is replaced.
+      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => destination),
+        (_) => false,
+      );
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final messenger = rootScaffoldMessengerKey.currentState;
+        if (messenger == null) return;
+        if (_isLogin) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                result.profileCompleted
+                    ? 'Welcome back!'
+                    : 'Signed in — finish your health profile to continue.',
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
             ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => HealthProfileScreen()),
-        );
-      }
+          );
+        } else {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Account created. Let\'s set up your health profile.',
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      });
     } else {
       // AuthNotifier already sets a user-friendly error message; keep a simple fallback too.
       final err = ref.read(authProvider).error?.toString();

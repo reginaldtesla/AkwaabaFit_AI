@@ -9,19 +9,21 @@ import 'package:mobile/features/auth/presentation/splash_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
-import 'package:mobile/shared/fitness/background_step_service.dart';
+import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
 import 'package:mobile/shared/notifications/push_notification_service.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 import 'package:mobile/shared/app_update/app_update_banner.dart';
 import 'package:mobile/shared/app_update/app_update_provider.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/payments/paystack_payment_launcher.dart';
+import 'package:mobile/shared/fitness/step_goal_notification_listener.dart';
+import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await BackgroundStepService.ensureStarted();
+  await BackgroundStepTrackingBootstrap.initializeOnAppStart();
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -31,12 +33,15 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scaffoldMessengerKey: rootScaffoldMessengerKey,
       title: 'AkwaabaFit',
       theme: ThemeData(primarySwatch: Colors.green),
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
         return AppUpdateBannerHost(
-          child: _PushAndProfileSyncListener(child: child),
+          child: StepGoalNotificationListener(
+            child: _PushAndProfileSyncListener(child: child),
+          ),
         );
       },
       home: const SplashScreen(),
@@ -53,7 +58,8 @@ class _PushAndProfileSyncListener extends ConsumerStatefulWidget {
   ConsumerState<_PushAndProfileSyncListener> createState() => _PushAndProfileSyncListenerState();
 }
 
-class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSyncListener> {
+class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSyncListener>
+    with WidgetsBindingObserver {
   final _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _sub;
   final _push = PushNotificationService();
@@ -64,6 +70,7 @@ class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSync
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     PaystackPaymentLauncher.instance.ensureInitialized();
 
     // Attempt a sync on app start.
@@ -100,8 +107,16 @@ class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSync
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(BackgroundStepTrackingBootstrap.ensureRunningOnResume());
+    }
   }
 
   @override

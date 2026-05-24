@@ -10,10 +10,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
 import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
+import 'package:mobile/shared/fitness/step_goal_achievement_notifier.dart';
 import 'package:mobile/shared/fitness/today_steps_from_sensor.dart';
 
 class BackgroundStepService {
-  static const _channelId = 'akwaabafit_step_tracking';
+  static const _channelId = 'akwaabafit_steps_live';
   static const _notificationId = 20260508;
 
   @pragma('vm:entry-point')
@@ -27,14 +28,20 @@ class BackgroundStepService {
       _channelId,
       'AkwaabaFit · Steps',
       description:
-          'Today’s steps and your activity targets while tracking runs.',
-      importance: Importance.low,
+          'Live step count while tracking runs in the background.',
+      importance: Importance.high,
       showBadge: false,
+      playSound: false,
+      enableVibration: false,
     );
-    await notifications
+    final androidPlugin = notifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(channel);
+    // New channel id on upgrade — drop the old low-priority channel so it stops competing.
+    await androidPlugin?.deleteNotificationChannel(
+      channelId: 'akwaabafit_step_tracking',
+    );
 
     final service = FlutterBackgroundService();
 
@@ -43,9 +50,11 @@ class BackgroundStepService {
         onStart: backgroundServiceOnStart,
         isForegroundMode: true,
         autoStart: true,
+        autoStartOnBoot: true,
+        foregroundServiceTypes: const [AndroidForegroundType.health],
         foregroundServiceNotificationId: _notificationId,
-        initialNotificationTitle: 'Steps',
-        initialNotificationContent: 'Syncing today’s total…',
+        initialNotificationTitle: 'AkwaabaFit steps',
+        initialNotificationContent: 'Tracking today’s steps in the background…',
         notificationChannelId: _channelId,
       ),
       iosConfiguration: IosConfiguration(
@@ -67,6 +76,10 @@ String _formatSteps(int value) {
     buf.write(digits[i]);
   }
   return negative ? '-$buf' : buf.toString();
+}
+
+Future<void> _onStepsUpdated(int steps) async {
+  unawaited(StepGoalAchievementNotifier.evaluate(steps: steps));
 }
 
 Future<void> _applySamsungStyleForeground(
@@ -104,7 +117,9 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
     android = service;
     android.setAsForegroundService();
     latestTodaySteps = await StepsOfflineRecorder.cachedTodayStepsOrNull();
-    await _applySamsungStyleForeground(android, latestTodaySteps ?? 0);
+    final initial = latestTodaySteps ?? 0;
+    await _applySamsungStyleForeground(android, initial);
+    await _onStepsUpdated(initial);
   }
 
   StreamSubscription<StepCount>? stepSub;
@@ -182,6 +197,7 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
       currentDayKey = nowKey;
       latestTodaySteps = 0;
       await _applySamsungStyleForeground(fgAndroid, 0);
+      unawaited(_onStepsUpdated(0));
     });
   }
 
@@ -189,11 +205,13 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
     stepSub = Pedometer.stepCountStream.listen(
       (event) async {
         latestTodaySteps = await todaySteps.update(event.steps);
+        final s = latestTodaySteps ?? 0;
+        unawaited(_onStepsUpdated(s));
         if (android != null) {
           final fgAndroid = android;
           debounceFg?.cancel();
           debounceFg = Timer(const Duration(seconds: 2), () {
-            _applySamsungStyleForeground(fgAndroid, latestTodaySteps ?? 0);
+            _applySamsungStyleForeground(fgAndroid, s);
           });
         }
       },

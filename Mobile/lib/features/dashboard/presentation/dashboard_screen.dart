@@ -15,11 +15,15 @@ import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
+import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
+import 'package:mobile/shared/fitness/step_goal_achievement_notifier.dart';
 import 'package:mobile/shared/notifications/local_notification_service.dart';
 import 'package:mobile/shared/notifications/notification_inbox_provider.dart';
 import 'package:mobile/shared/notifications/notifications_modal.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/auth/sanctum_token_storage.dart';
+import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
@@ -660,8 +664,8 @@ Map<String, String> _dashboardLocalDayQueryParams() {
 // In production, this will use Dio to fetch from Laravel `GET /api/dashboard`.
 final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
   const storage = FlutterSecureStorage();
-  final token = await storage.read(key: 'sanctum_token');
-  if (token == null || token.isEmpty) {
+  final token = await readSanctumToken(storage: storage);
+  if (token == null) {
     throw Exception('Missing auth token. Please login again.');
   }
 
@@ -769,6 +773,16 @@ void _syncForegroundAndScheduledReminders(WidgetRef ref, DashboardData data) {
     ForegroundNotificationPrefs.syncActivityGoalsFromDashboard(
       stepGoal: stepGoal,
       dailyCaloriesTarget: kcal,
+      caloriesConsumed: data.consumedKcal,
+      mealsLoggedToday: data.mealsLoggedToday ?? 0,
+    ),
+  );
+  unawaited(
+    StepGoalAchievementNotifier.evaluate(
+      steps: data.currentSteps,
+      calorieConsumed: data.consumedKcal,
+      calorieTarget: kcal,
+      mealsLoggedToday: data.mealsLoggedToday ?? 0,
     ),
   );
   unawaited(
@@ -807,6 +821,34 @@ class DashboardScreen extends ConsumerWidget {
       if (dash != null) _syncForegroundAndScheduledReminders(ref, dash);
     });
 
+    final tokenReady = ref.watch(sanctumTokenReadyProvider);
+
+    if (tokenReady.isLoading) {
+      return Scaffold(
+        backgroundColor: bgSoft,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: primary),
+              const SizedBox(height: 16),
+              Text(
+                'Opening your dashboard…',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (tokenReady.hasError || tokenReady.value != true) {
+      return const AuthScreen();
+    }
+
     final dashboardState = ref.watch(dashboardDataProvider);
     final stepsTodayAsync = ref.watch(stepsTodayProvider);
     final stepGoalAsync = ref.watch(stepGoalProvider);
@@ -816,7 +858,22 @@ class DashboardScreen extends ConsumerWidget {
 
     if (dashboardState.hasError &&
         dashboardState.error.toString().contains('Missing auth token')) {
-      return const AuthScreen();
+      return Scaffold(
+        backgroundColor: bgSoft,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: primary),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => ref.invalidate(dashboardDataProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Scaffold(
@@ -838,6 +895,11 @@ class DashboardScreen extends ConsumerWidget {
             dailyCaloriesTarget:
                 _effectiveDashboardDailyCalories(data, localDailyKcal),
           );
+          if (liveSteps != null && liveSteps > 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              BackgroundStepTrackingBootstrap.promptBatteryIfNeeded(context);
+            });
+          }
           return _buildContent(context, merged, ref);
         },
       ),

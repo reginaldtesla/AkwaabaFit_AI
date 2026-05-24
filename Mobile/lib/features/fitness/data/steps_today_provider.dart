@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
+import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
 import 'package:mobile/shared/fitness/today_steps_from_sensor.dart';
 
 final stepsTodayProvider = StreamProvider<int>((ref) async* {
@@ -13,6 +14,7 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
     yield 0;
     return;
   }
+  await BackgroundStepTrackingBootstrap.onActivityPermissionGranted();
 
   final controller = StreamController<int>();
   ref.onDispose(controller.close);

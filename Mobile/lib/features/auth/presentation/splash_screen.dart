@@ -143,7 +143,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         final prefs = await SharedPreferences.getInstance().timeout(
           const Duration(seconds: 5),
         );
-        seenWelcome = prefs.getBool('akwaaba_welcome_v1') ?? false;
+        seenWelcome = prefs.getBool('akwaaba_welcome_v2') ?? false;
       } catch (_) {
         seenWelcome = true;
       }
@@ -162,7 +162,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Future<void> _dismissFirstRunWelcome() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('akwaaba_welcome_v1', true);
+    await prefs.setBool('akwaaba_welcome_v2', true);
     if (!mounted) return;
     setState(() {
       _showFirstRunWelcome = false;
@@ -367,66 +367,77 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               child: Material(
                 color: softWhite.withValues(alpha: 0.97),
                 child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SizedBox(height: 24),
-                        Icon(Icons.travel_explore_rounded,
-                            size: 48, color: forest),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Welcome',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: slate800,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'AkwaabaFit works best when your phone can reach '
-                          'your clinic server at least once—so you can sign in '
-                          'and sync your profile.',
-                          style: GoogleFonts.inter(
-                            fontSize: 15,
-                            height: 1.5,
-                            color: slate500,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'After that, key screens remember your last data '
-                          'when signal dips—your steps still update from your '
-                          'phone.',
-                          style: GoogleFonts.inter(
-                            fontSize: 15,
-                            height: 1.5,
-                            color: slate500,
-                          ),
-                        ),
-                        const Spacer(),
-                        FilledButton(
-                          onPressed: _dismissFirstRunWelcome,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: forest,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 20,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 400),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Icon(
+                              Icons.directions_walk_rounded,
+                              size: 52,
+                              color: forest,
                             ),
-                          ),
-                          child: Text(
-                            'Continue',
-                            style: GoogleFonts.inter(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                            const SizedBox(height: 20),
+                            Text(
+                              'Akwaaba to AkwaabaFit',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: slate800,
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Your Ghana-focused fitness and nutrition companion: '
+                              'scan local meals, track daily steps, log calories, and '
+                              'connect with dietitians when you need expert advice.',
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                height: 1.45,
+                                color: slate500,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Text(
+                              'Sign in once when you have internet so your profile '
+                              'syncs. Steps keep counting from your phone even offline, '
+                              'and your dashboard fills in when you\'re back online.',
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                height: 1.45,
+                                color: slate500,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            FilledButton(
+                              onPressed: _dismissFirstRunWelcome,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: forest,
+                                foregroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Text(
+                                'Get started',
+                                style: GoogleFonts.inter(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 32),
-                      ],
+                      ),
                     ),
                   ),
                 ),
