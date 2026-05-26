@@ -9,7 +9,7 @@ import 'package:mobile/shared/notifications/notification_inbox.dart';
 
 /// Samsung Health–style alerts when the user hits their step goal (and optional daily targets).
 abstract final class StepGoalAchievementNotifier {
-  static const _channelId = 'activity_achievements';
+  static const _channelId = 'activity_achievements_quiet';
   static const _channelName = 'Activity achievements';
 
   static const _stepReachedDayKey = 'akwaaba_step_goal_reached_day';
@@ -41,16 +41,22 @@ abstract final class StepGoalAchievementNotifier {
     await _plugin!.initialize(settings: const InitializationSettings(android: androidInit));
 
     if (Platform.isAndroid) {
-      await _plugin!
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(
-            const AndroidNotificationChannel(
-              _channelId,
-              _channelName,
-              description: 'Step goal and daily activity achievements',
-              importance: Importance.defaultImportance,
-            ),
-          );
+      final android = _plugin!
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await android?.deleteNotificationChannel(
+        channelId: 'activity_achievements',
+      );
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: 'Step goal and daily activity achievements',
+          importance: Importance.low,
+          playSound: false,
+          enableVibration: false,
+        ),
+      );
     }
     _initialized = true;
   }
@@ -184,8 +190,11 @@ abstract final class StepGoalAchievementNotifier {
           _channelId,
           _channelName,
           channelDescription: 'Step goal and daily activity achievements',
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
+          importance: Importance.low,
+          priority: Priority.low,
+          playSound: false,
+          enableVibration: false,
+          onlyAlertOnce: true,
           styleInformation: BigTextStyleInformation(body),
         ),
       ),

@@ -14,8 +14,15 @@ import 'package:mobile/shared/fitness/step_goal_achievement_notifier.dart';
 import 'package:mobile/shared/fitness/today_steps_from_sensor.dart';
 
 class BackgroundStepService {
-  static const _channelId = 'akwaabafit_steps_live';
+  /// Low-importance channel: ongoing tracking without heads-up popups.
+  static const _channelId = 'akwaabafit_steps_quiet';
   static const _notificationId = 20260508;
+
+  /// How often the foreground notification text may refresh at most.
+  static const _foregroundRefreshMinInterval = Duration(minutes: 5);
+
+  /// Only refresh when steps move by at least this much (reduces shade churn).
+  static const _foregroundRefreshStepDelta = 250;
 
   @pragma('vm:entry-point')
   static Future<void> ensureStarted() async {
@@ -28,8 +35,8 @@ class BackgroundStepService {
       _channelId,
       'AkwaabaFit · Steps',
       description:
-          'Live step count while tracking runs in the background.',
-      importance: Importance.high,
+          'Background step tracking (silent, no alerts).',
+      importance: Importance.low,
       showBadge: false,
       playSound: false,
       enableVibration: false,
@@ -38,10 +45,13 @@ class BackgroundStepService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(channel);
-    // New channel id on upgrade — drop the old low-priority channel so it stops competing.
-    await androidPlugin?.deleteNotificationChannel(
-      channelId: 'akwaabafit_step_tracking',
-    );
+    // Drop legacy channels so users are not stuck on high-importance settings.
+    for (final legacy in [
+      'akwaabafit_step_tracking',
+      'akwaabafit_steps_live',
+    ]) {
+      await androidPlugin?.deleteNotificationChannel(channelId: legacy);
+    }
 
     final service = FlutterBackgroundService();
 
@@ -53,8 +63,8 @@ class BackgroundStepService {
         autoStartOnBoot: true,
         foregroundServiceTypes: const [AndroidForegroundType.health],
         foregroundServiceNotificationId: _notificationId,
-        initialNotificationTitle: 'AkwaabaFit steps',
-        initialNotificationContent: 'Tracking today’s steps in the background…',
+        initialNotificationTitle: 'AkwaabaFit · Steps',
+        initialNotificationContent: 'Tracking in the background',
         notificationChannelId: _channelId,
       ),
       iosConfiguration: IosConfiguration(
@@ -82,25 +92,38 @@ Future<void> _onStepsUpdated(int steps) async {
   unawaited(StepGoalAchievementNotifier.evaluate(steps: steps));
 }
 
+int? _lastForegroundSteps;
+DateTime? _lastForegroundRefreshAt;
+
+/// Updates the required foreground notification only when needed (quiet mode).
 Future<void> _applySamsungStyleForeground(
   AndroidServiceInstance android,
-  int steps,
-) async {
+  int steps, {
+  bool force = false,
+}) async {
+  final now = DateTime.now();
+  final lastAt = _lastForegroundRefreshAt;
+  final lastSteps = _lastForegroundSteps;
+  if (!force && lastSteps != null && lastAt != null) {
+    final stepDelta = (steps - lastSteps).abs();
+    final elapsed = now.difference(lastAt);
+    if (stepDelta < BackgroundStepService._foregroundRefreshStepDelta &&
+        elapsed < BackgroundStepService._foregroundRefreshMinInterval) {
+      return;
+    }
+  }
+
   final prefs = await SharedPreferences.getInstance();
   final rawGoal = prefs.getInt(ForegroundNotificationPrefs.stepGoalKey);
   final goal = (rawGoal != null && rawGoal > 0) ? rawGoal : 10000;
-  final rawKcal = prefs.getInt(ForegroundNotificationPrefs.calorieGoalKey);
-  final kcal = rawKcal ?? 0;
-
-  final stepsLine = 'Target steps ${_formatSteps(goal)}.';
-  final subtitle = kcal > 0
-      ? '$stepsLine ${_formatSteps(kcal)} kcal/day'
-      : stepsLine;
 
   await android.setForegroundNotificationInfo(
-    title: '${_formatSteps(steps)} steps',
-    content: subtitle,
+    title: 'AkwaabaFit · Steps',
+    content:
+        '${_formatSteps(steps)} today · goal ${_formatSteps(goal)}',
   );
+  _lastForegroundSteps = steps;
+  _lastForegroundRefreshAt = now;
 }
 
 @pragma('vm:entry-point')
@@ -118,7 +141,7 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
     android.setAsForegroundService();
     latestTodaySteps = await StepsOfflineRecorder.cachedTodayStepsOrNull();
     final initial = latestTodaySteps ?? 0;
-    await _applySamsungStyleForeground(android, initial);
+    await _applySamsungStyleForeground(android, initial, force: true);
     await _onStepsUpdated(initial);
   }
 
@@ -179,16 +202,23 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
     (_) async {
       final a = android;
       if (a != null) {
-        await _applySamsungStyleForeground(a, latestTodaySteps ?? 0);
+        await _applySamsungStyleForeground(
+          a,
+          latestTodaySteps ?? 0,
+          force: true,
+        );
       }
     },
   );
 
   if (android != null) {
     final fgAndroid = android;
-    fgTicker = Timer.periodic(const Duration(seconds: 45), (_) async {
-      await _applySamsungStyleForeground(fgAndroid, latestTodaySteps ?? 0);
-    });
+    fgTicker = Timer.periodic(
+      BackgroundStepService._foregroundRefreshMinInterval,
+      (_) async {
+        await _applySamsungStyleForeground(fgAndroid, latestTodaySteps ?? 0);
+      },
+    );
 
     // Day rollover may happen without a step event; reset to 0 promptly.
     rolloverTicker = Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -196,7 +226,7 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
       if (nowKey == currentDayKey) return;
       currentDayKey = nowKey;
       latestTodaySteps = 0;
-      await _applySamsungStyleForeground(fgAndroid, 0);
+      await _applySamsungStyleForeground(fgAndroid, 0, force: true);
       unawaited(_onStepsUpdated(0));
     });
   }
@@ -210,7 +240,7 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
         if (android != null) {
           final fgAndroid = android;
           debounceFg?.cancel();
-          debounceFg = Timer(const Duration(seconds: 2), () {
+          debounceFg = Timer(const Duration(seconds: 30), () {
             _applySamsungStyleForeground(fgAndroid, s);
           });
         }
