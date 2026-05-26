@@ -27,6 +27,7 @@ import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
+import 'package:mobile/shared/fitness/stride_weather_guidance.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
 
 // =====================================================================
@@ -1543,6 +1544,8 @@ class DashboardScreen extends ConsumerWidget {
   Widget _buildWeatherStepsCard(DashboardData data) {
     final bool isHighHeat = data.tempCelsius >= 32.0;
     final bool isPoorAir = (data.airQualityAqi ?? 0) >= 4;
+    final bool isRainy =
+        StrideWeatherGuidance.discouragesOutdoorWalk(data.weatherMain);
     final stepGoal = data.stepGoal <= 0 ? 1 : data.stepGoal;
     final stepsPct = data.currentSteps / stepGoal;
 
@@ -1749,6 +1752,42 @@ class DashboardScreen extends ConsumerWidget {
                 ],
               ),
             ),
+          ] else if (isRainy) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.shade100),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'STRIDE TIP',
+                    style: GoogleFonts.inter(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    StrideWeatherGuidance.isStorm(data.weatherMain)
+                        ? 'Stay indoors — home steps still count'
+                        : 'Rainy day — walk indoors or use stairs',
+                    style: GoogleFonts.inter(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blueGrey.shade700,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ],
       ),
@@ -1869,6 +1908,12 @@ class DashboardScreen extends ConsumerWidget {
     }
     if (isHighHeat) {
       return '$name, it’s hot outside (${data.tempCelsius.toInt()}°C). Prefer shade, shorter outings, and low-intensity movement today.';
+    }
+    if (StrideWeatherGuidance.discouragesOutdoorWalk(data.weatherMain)) {
+      final storm = StrideWeatherGuidance.isStorm(data.weatherMain);
+      return storm
+          ? '$name, storms today — stay indoors. Indoor steps still count: march in place, use stairs, or light cardio at home.'
+          : '$name, it’s rainy today — you don’t have to go outside. Indoor steps count the same; try home pacing or stairs for ~12 minutes.';
     }
 
     // Priority 2: steps gaps

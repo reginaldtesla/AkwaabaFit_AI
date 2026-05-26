@@ -10,6 +10,7 @@ import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/shared/auth/sanctum_token_storage.dart';
 import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
 import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
+import 'package:mobile/shared/ui/app_brand_logo.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
 import 'package:mobile/shared/offline/offline_session_cleanup.dart';
@@ -387,19 +388,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ColoredBox(color: _background),
           Align(
             alignment: const Alignment(0, -0.35),
-            child: Opacity(
+            child: AppBrandLogo(
+              size: width * 0.88,
               opacity: 0.22,
-              child: Image.asset(
-                'assets/icon/app_icon_logo.png',
-                width: width * 0.78,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-                errorBuilder: (_, __, ___) => Image.asset(
-                  'assets/icon/app_icon.png',
-                  width: width * 0.78,
-                  fit: BoxFit.contain,
-                ),
-              ),
             ),
           ),
         ],

@@ -47,6 +47,14 @@ class ActivityTodayTest extends TestCase
                 'activeMinutes',
                 'hourlyData',
                 'hourlyBucketSteps',
+                'weather' => [
+                    'tempCelsius',
+                    'location',
+                    'main',
+                    'description',
+                    'airQualityAqi',
+                ],
+                'strideTip',
             ]);
     }
 

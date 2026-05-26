@@ -75,9 +75,8 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
+  # Opaque launcher only (green square). Rebuild: dart run tool/build_app_icons.dart
   image_path: assets/icon/app_icon.png
-  # Single square icon only — avoids adaptive-layer stretch on some launchers.
-  # (Do not set adaptive_icon_foreground to the full icon; that causes squashing.)
   web:
     generate: true
     image_path: assets/icon/app_icon.png
@@ -95,6 +94,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    # app_icon.png = launcher (opaque). app_icon_logo.png = in-app (transparent).
     - assets/icon/app_icon.png
     - assets/icon/app_icon_logo.png
     - assets/models/food_v1.onnx

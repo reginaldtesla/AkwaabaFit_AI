@@ -20,6 +20,8 @@ import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
+import 'package:mobile/shared/fitness/stride_weather_guidance.dart';
+import 'package:mobile/shared/fitness/stride_weather_provider.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT (RIVERPOD DATA MODELS)
@@ -125,6 +127,13 @@ class ActivityData {
   /// Step totals per 3-hour bucket (aligned with [hourlyData] indices).
   final List<int> hourlyBucketSteps;
   final bool fromOfflineCache;
+  /// OpenWeather via `GET /activity/today` (same source as dashboard).
+  final double? tempCelsius;
+  final String? weatherLocation;
+  final String? weatherMain;
+  final String? weatherDescription;
+  final int? airQualityAqi;
+  final String? strideTip;
 
   ActivityData({
     required this.stepsToday,
@@ -136,10 +145,52 @@ class ActivityData {
     required this.hourlyData,
     required this.hourlyBucketSteps,
     this.fromOfflineCache = false,
+    this.tempCelsius,
+    this.weatherLocation,
+    this.weatherMain,
+    this.weatherDescription,
+    this.airQualityAqi,
+    this.strideTip,
   });
 
   int get stepsLeft => stepGoal - stepsToday > 0 ? stepGoal - stepsToday : 0;
   double get progress => stepGoal <= 0 ? 0 : stepsToday / stepGoal;
+
+  ActivityData copyWith({
+    int? stepsToday,
+    int? stepsYesterday,
+    int? stepGoal,
+    int? streakDays,
+    int? calories,
+    double? distanceKm,
+    List<double>? hourlyData,
+    List<int>? hourlyBucketSteps,
+    bool? fromOfflineCache,
+    double? tempCelsius,
+    String? weatherLocation,
+    String? weatherMain,
+    String? weatherDescription,
+    int? airQualityAqi,
+    String? strideTip,
+  }) {
+    return ActivityData(
+      stepsToday: stepsToday ?? this.stepsToday,
+      stepsYesterday: stepsYesterday ?? this.stepsYesterday,
+      stepGoal: stepGoal ?? this.stepGoal,
+      streakDays: streakDays ?? this.streakDays,
+      calories: calories ?? this.calories,
+      distanceKm: distanceKm ?? this.distanceKm,
+      hourlyData: hourlyData ?? this.hourlyData,
+      hourlyBucketSteps: hourlyBucketSteps ?? this.hourlyBucketSteps,
+      fromOfflineCache: fromOfflineCache ?? this.fromOfflineCache,
+      tempCelsius: tempCelsius ?? this.tempCelsius,
+      weatherLocation: weatherLocation ?? this.weatherLocation,
+      weatherMain: weatherMain ?? this.weatherMain,
+      weatherDescription: weatherDescription ?? this.weatherDescription,
+      airQualityAqi: airQualityAqi ?? this.airQualityAqi,
+      strideTip: strideTip ?? this.strideTip,
+    );
+  }
 
   factory ActivityData.fromJson(Map<String, dynamic> json) {
     final raw = (json['hourlyData'] as List?) ?? const [];
@@ -152,6 +203,11 @@ class ActivityData {
     final sy = syRaw == null ? null : (syRaw as num?)?.toInt();
     final hourlyResolved =
         values.length == 8 ? values : List<double>.filled(8, 0.0);
+    final weather = json['weather'];
+    final weatherMap = weather is Map
+        ? weather.map((k, v) => MapEntry(k.toString(), v))
+        : null;
+
     return ActivityData(
       stepsToday: steps,
       stepsYesterday: sy,
@@ -162,6 +218,16 @@ class ActivityData {
       hourlyData: hourlyResolved,
       hourlyBucketSteps: _parseHourlyBucketSteps(json),
       fromOfflineCache: false,
+      tempCelsius: weatherMap != null
+          ? (weatherMap['tempCelsius'] as num?)?.toDouble()
+          : null,
+      weatherLocation: weatherMap?['location']?.toString(),
+      weatherMain: weatherMap?['main']?.toString(),
+      weatherDescription: weatherMap?['description']?.toString(),
+      airQualityAqi: weatherMap != null
+          ? (weatherMap['airQualityAqi'] as num?)?.toInt()
+          : null,
+      strideTip: json['strideTip']?.toString(),
     );
   }
 }
@@ -227,15 +293,11 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
     if (cached != null) {
       final base = ActivityData.fromJson(cached);
       final mergedSteps = localSteps ?? base.stepsToday;
-      return ActivityData(
+      return base.copyWith(
         stepsToday: mergedSteps,
-        stepsYesterday: base.stepsYesterday,
         stepGoal: (localGoal != null && localGoal > 0) ? localGoal : base.stepGoal,
-        streakDays: base.streakDays,
         calories: _kcalBurnedFromSteps(mergedSteps),
         distanceKm: _distanceKmFromSteps(mergedSteps),
-        hourlyData: base.hourlyData,
-        hourlyBucketSteps: base.hourlyBucketSteps,
         fromOfflineCache: true,
       );
     }
@@ -270,16 +332,10 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
     final localGoal = await _readLocalStepGoalActivity(ref);
     if (localGoal != null && localGoal > 0) {
       final s = base.stepsToday;
-      return ActivityData(
-        stepsToday: s,
-        stepsYesterday: base.stepsYesterday,
+      return base.copyWith(
         stepGoal: localGoal,
-        streakDays: base.streakDays,
         calories: _kcalBurnedFromSteps(s),
         distanceKm: _distanceKmFromSteps(s),
-        hourlyData: base.hourlyData,
-        hourlyBucketSteps: base.hourlyBucketSteps,
-        fromOfflineCache: false,
       );
     }
 
@@ -292,15 +348,11 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
     if (cached != null) {
       final base = ActivityData.fromJson(cached);
       final mergedSteps = localSteps ?? base.stepsToday;
-      return ActivityData(
+      return base.copyWith(
         stepsToday: mergedSteps,
-        stepsYesterday: base.stepsYesterday,
         stepGoal: (localGoal != null && localGoal > 0) ? localGoal : base.stepGoal,
-        streakDays: base.streakDays,
         calories: _kcalBurnedFromSteps(mergedSteps),
         distanceKm: _distanceKmFromSteps(mergedSteps),
-        hourlyData: base.hourlyData,
-        hourlyBucketSteps: base.hourlyBucketSteps,
         fromOfflineCache: true,
       );
     }
@@ -615,7 +667,7 @@ class _LeaderboardAttentionButtonState extends State<_LeaderboardAttentionButton
 // 2. THE UI SCREEN
 // =====================================================================
 
-class ActivityTrackingScreen extends ConsumerWidget {
+class ActivityTrackingScreen extends ConsumerStatefulWidget {
   const ActivityTrackingScreen({super.key});
 
   // Theme Colors from Design
@@ -627,7 +679,23 @@ class ActivityTrackingScreen extends ConsumerWidget {
   static const Color dashboardGreen = Color(0xFF1A5D1A);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ActivityTrackingScreen> createState() =>
+      _ActivityTrackingScreenState();
+}
+
+class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.invalidate(activityDataProvider);
+      ref.invalidate(dashboardDataProvider);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final activityState = ref.watch(activityDataProvider);
     final stepsTodayAsync = ref.watch(stepsTodayProvider);
     final stepGoalAsync = ref.watch(stepGoalProvider);
@@ -644,7 +712,9 @@ class ActivityTrackingScreen extends ConsumerWidget {
         bottom: false,
         child: activityState.when(
           loading: () =>
-              const Center(child: CircularProgressIndicator(color: secondaryBlue)),
+              const Center(
+                  child: CircularProgressIndicator(
+                      color: ActivityTrackingScreen.secondaryBlue)),
           error: (err, stack) => NetworkErrorView(
             title: 'Activity unavailable',
             message: userFriendlyDataLoadMessage(err),
@@ -654,24 +724,20 @@ class ActivityTrackingScreen extends ConsumerWidget {
             final liveSteps = stepsTodayAsync.valueOrNull;
             final merged = liveSteps == null
                 ? data
-                : ActivityData(
+                : data.copyWith(
                     stepsToday: liveSteps,
-                    stepsYesterday: data.stepsYesterday,
                     stepGoal: (localStepGoal != null && localStepGoal > 0)
                         ? localStepGoal
                         : data.stepGoal,
-                    streakDays: data.streakDays,
                     calories: _kcalBurnedFromSteps(liveSteps),
                     distanceKm: _distanceKmFromSteps(liveSteps),
-                    hourlyData: data.hourlyData,
-                    hourlyBucketSteps: data.hourlyBucketSteps,
-                    fromOfflineCache: data.fromOfflineCache,
                   );
 
             return RefreshIndicator(
-              color: secondaryBlue,
+              color: ActivityTrackingScreen.secondaryBlue,
               onRefresh: () async {
                 ref.invalidate(activityDataProvider);
+                ref.invalidate(dashboardDataProvider);
                 ref.invalidate(yesterdayStepsLocalProvider);
                 await ref.read(activityDataProvider.future);
               },
@@ -706,7 +772,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
-                  color: dashboardGreen,
+                  color: ActivityTrackingScreen.dashboardGreen,
                 ),
               ),
             ),
@@ -716,7 +782,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
                   MaterialPageRoute(builder: (_) => const AiScannerScreen()),
                 );
               },
-              backgroundColor: dashboardGreen,
+              backgroundColor: ActivityTrackingScreen.dashboardGreen,
               elevation: 8,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(30),
@@ -813,6 +879,9 @@ class ActivityTrackingScreen extends ConsumerWidget {
           const _PaceSpeedLiveCard(),
           const SizedBox(height: 24),
           _WellnessAdviceLiveCard(data: data),
+          const SizedBox(height: 24),
+          _IndoorStrideTipsWhenRain(),
+          const _StrideWeatherContextCard(),
         ],
       ),
     );
@@ -831,7 +900,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
-                color: textDark,
+                color: ActivityTrackingScreen.textDark,
                 letterSpacing: -0.5,
               ),
             ),
@@ -840,7 +909,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: slateCustom,
+                color: ActivityTrackingScreen.slateCustom,
               ),
             ),
           ],
@@ -867,7 +936,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
           CircularProgressIndicator(
             value: data.progress.clamp(0.0, 1.0),
             strokeWidth: 12,
-            color: dashboardGreen,
+            color: ActivityTrackingScreen.dashboardGreen,
             backgroundColor: Colors.transparent,
             strokeCap: StrokeCap.round,
           ),
@@ -879,7 +948,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: slateCustom,
+                  color: ActivityTrackingScreen.slateCustom,
                 ),
               ),
               const SizedBox(height: 4),
@@ -888,7 +957,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 56,
                   fontWeight: FontWeight.bold,
-                  color: textDark,
+                  color: ActivityTrackingScreen.textDark,
                   letterSpacing: -2,
                 ),
               ),
@@ -930,11 +999,11 @@ class ActivityTrackingScreen extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildStatColumn('GOAL', '${data.stepGoal}', textDark),
+          _buildStatColumn('GOAL', '${data.stepGoal}', ActivityTrackingScreen.textDark),
           Container(width: 1, height: 40, color: Colors.blueGrey.shade100),
-          _buildStatColumn('LEFT', '${data.stepsLeft}', secondaryBlue),
+          _buildStatColumn('LEFT', '${data.stepsLeft}', ActivityTrackingScreen.secondaryBlue),
           Container(width: 1, height: 40, color: Colors.blueGrey.shade100),
-          _buildStatColumn('STREAK', '${data.streakDays} Days', primaryGreen),
+          _buildStatColumn('STREAK', '${data.streakDays} Days', ActivityTrackingScreen.primaryGreen),
         ],
       ),
     );
@@ -981,7 +1050,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
         Expanded(
           child: _buildMetricCard(
             icon: Icons.local_fire_department,
-            iconColor: secondaryBlue,
+            iconColor: ActivityTrackingScreen.secondaryBlue,
             bgColor: Colors.blue.shade50,
             trend: trend,
             value: '${data.calories}',
@@ -992,7 +1061,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
         Expanded(
           child: _buildMetricCard(
             icon: Icons.near_me,
-            iconColor: primaryGreen,
+            iconColor: ActivityTrackingScreen.primaryGreen,
             bgColor: Colors.green.shade50,
             trend: trend,
             value: data.distanceKm.toStringAsFixed(2),
@@ -1014,7 +1083,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cardBg,
+        color: ActivityTrackingScreen.cardBg,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.blueGrey.shade50),
         boxShadow: [
@@ -1071,7 +1140,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
             style: GoogleFonts.plusJakartaSans(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: textDark,
+              color: ActivityTrackingScreen.textDark,
             ),
           ),
           Text(
@@ -1079,7 +1148,7 @@ class ActivityTrackingScreen extends ConsumerWidget {
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: slateCustom,
+                  color: ActivityTrackingScreen.slateCustom,
               letterSpacing: 0.5,
             ),
           ),
@@ -1091,6 +1160,224 @@ class ActivityTrackingScreen extends ConsumerWidget {
 }
 
 /// Encouragement tied to live steps, goal, and streak — updates as you move.
+class _StrideWeatherContextCard extends ConsumerWidget {
+  const _StrideWeatherContextCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final snap = ref.watch(strideWeatherProvider);
+    if (snap == null || !snap.hasCondition && snap.tempCelsius <= 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.blueGrey.shade50,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.blueGrey.shade100),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.cloud_off_outlined, color: Colors.blueGrey.shade600),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Weather loads when you\'re online — OpenWeather powers Stride tips.',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: Colors.blueGrey.shade700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final tip = (snap.strideTip?.trim().isNotEmpty == true)
+        ? snap.strideTip!.trim()
+        : StrideWeatherGuidance.summaryLine(
+            weatherMain: snap.weatherMain,
+            tempCelsius: snap.tempCelsius,
+            airQualityAqi: snap.airQualityAqi,
+          );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.blue.shade50,
+            Colors.green.shade50.withValues(alpha: 0.35),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                StrideWeatherGuidance.iconFor(snap.weatherMain),
+                color: Colors.blue.shade800,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${snap.tempCelsius.toStringAsFixed(0)}°C · ${StrideWeatherGuidance.labelFor(snap.weatherMain)}',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: ActivityTrackingScreen.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      snap.location,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: Colors.blueGrey.shade600,
+                      ),
+                    ),
+                    if (snap.weatherDescription != null &&
+                        snap.weatherDescription!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        snap.weatherDescription!,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          color: Colors.blueGrey.shade500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (snap.fromActivityApi)
+                Tooltip(
+                  message: 'Live from OpenWeather',
+                  child: Icon(
+                    Icons.cloud_done_outlined,
+                    size: 20,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            tip,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+              color: Colors.blueGrey.shade800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IndoorStrideTipsWhenRain extends ConsumerWidget {
+  const _IndoorStrideTipsWhenRain();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final weatherMain = ref.watch(strideWeatherProvider)?.weatherMain;
+    if (!StrideWeatherGuidance.discouragesOutdoorWalk(weatherMain)) {
+      return const SizedBox.shrink();
+    }
+
+    final tips = StrideWeatherGuidance.indoorAlternatives(
+      isStorm: StrideWeatherGuidance.isStorm(weatherMain),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.blue.shade100),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  StrideWeatherGuidance.isStorm(weatherMain)
+                      ? Icons.thunderstorm_outlined
+                      : Icons.umbrella_outlined,
+                  color: Colors.blue.shade800,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    StrideWeatherGuidance.isStorm(weatherMain)
+                        ? 'Storm today — move indoors'
+                        : 'Rain today — stay dry',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: ActivityTrackingScreen.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Outdoor walks can wait. Your phone still counts steps at home.',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                height: 1.4,
+                color: Colors.blueGrey.shade700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: tips
+                  .map(
+                    (t) => Chip(
+                      label: Text(t),
+                      labelStyle: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      backgroundColor: Colors.white,
+                      side: BorderSide(color: Colors.blue.shade100),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _WellnessAdviceLiveCard extends ConsumerStatefulWidget {
   const _WellnessAdviceLiveCard({required this.data});
 
@@ -1139,8 +1426,20 @@ class _WellnessAdviceLiveCardState extends ConsumerState<_WellnessAdviceLiveCard
         ? 'Your $streak-day streak shows real consistency. '
         : '';
 
+    final weatherMain = ref.watch(strideWeatherProvider)?.weatherMain;
+    final rainBody = StrideWeatherGuidance.wellnessBody(
+      steps: steps,
+      goal: goal,
+      progress: progress,
+      left: left,
+      weatherMain: weatherMain,
+      streakNote: streakNote,
+    );
+
     String body;
-    if (progress >= 1.0) {
+    if (rainBody.isNotEmpty) {
+      body = rainBody;
+    } else if (progress >= 1.0) {
       body =
           '${streakNote}You already hit your step goal today — outstanding. Celebrate the habit you\'re building, '
           'and recover well tonight.';

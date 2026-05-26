@@ -58,6 +58,7 @@ class StepLogTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/leaderboard/daily');
 
         $response->assertStatus(200)
+            ->assertJsonPath('period', 'month')
             ->assertJsonFragment([
                 'name' => 'Champion User',
             ]);
@@ -92,9 +93,37 @@ class StepLogTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/leaderboard/daily/me');
 
         $response->assertStatus(200)
+            ->assertJsonPath('period', 'month')
             ->assertJsonPath('optedIn', true)
-            ->assertJsonPath('stepsToday', 5000)
+            ->assertJsonPath('stepsThisMonth', 5000)
             ->assertJsonPath('rank', 2)
             ->assertJsonPath('user.location', 'Accra');
+    }
+
+    public function test_leaderboard_sums_steps_across_days_in_same_month(): void
+    {
+        Cache::flush();
+
+        $user = User::factory()->create([
+            'name' => 'Monthly Walker',
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $user->id,
+            'step_count' => 3000,
+            'log_date' => now()->startOfMonth()->toDateString(),
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $user->id,
+            'step_count' => 2000,
+            'log_date' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/leaderboard/daily');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.0.total_steps', 5000);
     }
 }

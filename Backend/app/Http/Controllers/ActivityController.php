@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DailyStepLog;
 use App\Models\HourlyStepLog;
+use App\Services\OpenWeatherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -65,6 +66,8 @@ class ActivityController extends Controller
             $buckets
         );
 
+        $weather = app(OpenWeatherService::class)->snapshot();
+
         return response()->json([
             'stepsToday' => $stepsToday,
             'stepsYesterday' => $stepsYesterday,
@@ -76,6 +79,20 @@ class ActivityController extends Controller
             'hourlyData' => $hourlyData,
             'hourlyBucketSteps' => array_values($buckets),
             'hasHourlyData' => $hourly->isNotEmpty(),
+            'weather' => [
+                'tempCelsius' => $weather['tempCelsius'],
+                'location' => $weather['location'],
+                'main' => $weather['weatherMain'],
+                'description' => $weather['weatherDescription'],
+                'airQualityAqi' => $weather['airQualityAqi'],
+            ],
+            'strideTip' => $this->strideTipForWeather(
+                $weather['tempCelsius'],
+                $weather['weatherMain'],
+                $weather['airQualityAqi'],
+                $stepsToday,
+                $stepGoal,
+            ),
         ]);
     }
 
@@ -158,6 +175,36 @@ class ActivityController extends Controller
         }
 
         return $buckets;
+    }
+
+    private function strideTipForWeather(
+        float $tempCelsius,
+        ?string $weatherMain,
+        ?int $airQualityAqi,
+        int $stepsToday,
+        int $stepGoal,
+    ): string {
+        $main = strtolower(trim((string) ($weatherMain ?? '')));
+        $goal = max(1, $stepGoal);
+        $pct = (int) round(($stepsToday / $goal) * 100);
+
+        if ($main === 'thunderstorm') {
+            return 'Storm advisory — stay indoors. Indoor steps still count toward your goal.';
+        }
+        if (in_array($main, ['rain', 'drizzle'], true)) {
+            return 'Rain today — skip the outdoor walk if you prefer. Pace at home or use stairs; steps still count.';
+        }
+        if ($airQualityAqi !== null && $airQualityAqi >= 4) {
+            return 'Poor air quality — keep workouts indoors and at an easy pace.';
+        }
+        if ($tempCelsius >= 32.0) {
+            return "High heat ({$tempCelsius}°C) — shorter outings, shade breaks, and lower intensity.";
+        }
+        if ($pct < 45) {
+            return "You are at {$pct}% of your step goal — a 12-minute indoor or outdoor walk can help.";
+        }
+
+        return 'Conditions look workable — move at a pace that feels comfortable today.';
     }
 
     private function calculateStepStreak(int $userId): int

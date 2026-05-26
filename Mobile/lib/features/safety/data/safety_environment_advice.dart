@@ -54,11 +54,11 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.umbrella,
       headlineColor: Colors.blue.shade700,
       quote:
-          '"A little rain does not have to ruin your day—grab something waterproof, take slow steps on slick paths, and enjoy how fresh everything smells afterward."',
-      tipAIcon: Icons.opacity_outlined,
-      tipALabel: 'Waterproof layer',
-      tipBIcon: Icons.umbrella,
-      tipBLabel: 'Carry umbrella',
+          '"Rainy day—outdoor walks can wait. Your steps still count indoors: pace at home, use stairs, or a covered corridor. Stay dry and keep moving gently."',
+      tipAIcon: Icons.home_outlined,
+      tipALabel: 'Move indoors',
+      tipBIcon: Icons.stairs_outlined,
+      tipBLabel: 'Stairs / pacing',
     );
   }
 

@@ -12,6 +12,7 @@ import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:mobile/shared/ui/app_brand_logo.dart';
 
 // --- Placeholder for your actual Auth logic ---
 // This provider checks secure storage for the Sanctum token and profile completion.
@@ -379,27 +380,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Center(
-                              child: Container(
-                                width: 84,
-                                height: 84,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(22),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: forest.withValues(alpha: 0.18),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: Image.asset(
-                                  'assets/icon/app_icon.png',
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
+                            const Center(child: AppBrandLogo(size: 96)),
                             const SizedBox(height: 20),
                             Text(
                               'Akwaaba to AkwaabaFit',
@@ -479,37 +460,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Widget _buildLogo() {
-    return Container(
-      width: 192,
-      height: 192,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [forest.withOpacity(0.05), Colors.transparent],
-          stops: const [0.0, 0.7],
-        ),
-      ),
-      child: Container(
-        width: 132,
-        height: 132,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(34),
-          boxShadow: [
-            BoxShadow(
-              color: forest.withValues(alpha: 0.14),
-              blurRadius: 26,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Image.asset(
-          'assets/icon/app_icon.png',
-          fit: BoxFit.cover,
-        ),
-      ),
-    );
+    return const AppBrandLogo(size: 160);
   }
 }
 

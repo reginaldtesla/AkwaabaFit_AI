@@ -137,6 +137,22 @@ List<Map<String, dynamic>> _leaderboardRowsFromEnvelope(Map<String, dynamic> jso
   return _coerceLeaderboardRowMaps(json);
 }
 
+int _parseLeaderboardInt(dynamic value, {int fallback = 0}) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim()) ?? fallback;
+  return fallback;
+}
+
+int? _parseLeaderboardIntOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
 final leaderboardProvider = FutureProvider<List<LeaderboardUser>>((ref) async {
   const storage = FlutterSecureStorage();
   final token = await storage.read(key: 'sanctum_token');
@@ -180,13 +196,13 @@ final leaderboardProvider = FutureProvider<List<LeaderboardUser>>((ref) async {
     me = null;
   }
 
-  String ymd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String ymdMonth(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
 
-  Future<Map<String, dynamic>> fetchBoard(DateTime date) async {
+  Future<Map<String, dynamic>> fetchBoard(DateTime monthAnchor) async {
     final resp = await dio.get(
       'leaderboard/daily',
-      queryParameters: {'date': ymd(date)},
+      queryParameters: {'month': ymdMonth(monthAnchor)},
     );
     final raw = resp.data;
     if (raw is List) {
@@ -208,22 +224,17 @@ final leaderboardProvider = FutureProvider<List<LeaderboardUser>>((ref) async {
     return raw.map((k, v) => MapEntry(k.toString(), v));
   }
 
-  // Fetch today. If empty, fallback to yesterday.
-  var json = await fetchBoard(DateTime.now());
-  var list = _leaderboardRowsFromEnvelope(json);
-  if (list.isEmpty) {
-    json = await fetchBoard(DateTime.now().subtract(const Duration(days: 1)));
-    list = _leaderboardRowsFromEnvelope(json);
-  }
+  // Current calendar month (resets on the 1st).
+  final json = await fetchBoard(DateTime.now());
+  final list = _leaderboardRowsFromEnvelope(json);
 
   final users = <LeaderboardUser>[];
   for (var i = 0; i < list.length; i++) {
     final row = list[i];
     final id = (row['id'] ?? '').toString();
     final name = (row['name'] ?? '').toString();
-    final steps = (row['total_steps'] as num?)?.toInt() ??
-        (row['step_count'] as num?)?.toInt() ??
-        0;
+    final steps = _parseLeaderboardInt(row['total_steps'],
+        fallback: _parseLeaderboardInt(row['step_count']));
     final avatarRaw = (row['avatar_url'] ?? row['avatarUrl'])?.toString() ?? '';
     final avatarUrl = avatarRaw.isEmpty ? '' : AppConfig.normalizeUrlForDevice(avatarRaw);
     final location = (row['location'] ?? '').toString();
@@ -251,8 +262,9 @@ final leaderboardProvider = FutureProvider<List<LeaderboardUser>>((ref) async {
   final meAvatarUrl =
       meAvatarRaw.isEmpty ? '' : AppConfig.normalizeUrlForDevice(meAvatarRaw);
   final meLocation = (meUser is Map ? meUser['location'] : null)?.toString() ?? '';
-  final meRank = (me?['rank'] as num?)?.toInt();
-  final meSteps = (me?['stepsToday'] as num?)?.toInt();
+  final meRank = _parseLeaderboardIntOrNull(me?['rank']);
+  final meSteps = _parseLeaderboardIntOrNull(me?['stepsThisMonth']) ??
+      _parseLeaderboardIntOrNull(me?['stepsToday']);
   final alreadyInTop = users.any((u) => u.id == meId);
   if (optedIn && meId != null && meRank != null && meSteps != null && !alreadyInTop) {
     users.add(
@@ -302,30 +314,28 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _meRowKey = GlobalKey();
   bool _didAutoScrollToMe = false;
-  /// Tracks local calendar day so we refresh leaderboard & countdown at midnight.
-  int? _lastLocalDayKey;
+  /// Tracks calendar month so we refresh leaderboard at month rollover.
+  int? _lastLocalMonthKey;
 
-  int _localDayKey(DateTime d) =>
-      d.year * 10000 + d.month * 100 + d.day;
+  int _localMonthKey(DateTime d) => d.year * 100 + d.month;
 
   Future<bool> _isOnline() async => isDeviceOnline();
 
   @override
   void initState() {
     super.initState();
-    _lastLocalDayKey = _localDayKey(DateTime.now());
-    _timeLeft = _untilNextLocalMidnight();
+    _lastLocalMonthKey = _localMonthKey(DateTime.now());
+    _timeLeft = _untilEndOfMonth();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final now = DateTime.now();
-      final dayKey = _localDayKey(now);
-      if (_lastLocalDayKey != null && dayKey != _lastLocalDayKey) {
-        // Local midnight passed — new “today” for leaderboard & countdown.
+      final monthKey = _localMonthKey(now);
+      if (_lastLocalMonthKey != null && monthKey != _lastLocalMonthKey) {
         ref.invalidate(leaderboardProvider);
         _didAutoScrollToMe = false;
       }
-      _lastLocalDayKey = dayKey;
-      setState(() => _timeLeft = _untilNextLocalMidnight());
+      _lastLocalMonthKey = monthKey;
+      setState(() => _timeLeft = _untilEndOfMonth());
     });
   }
 
@@ -336,24 +346,36 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
     super.dispose();
   }
 
-  Duration _untilNextLocalMidnight() {
+  Duration _untilEndOfMonth() {
     final now = DateTime.now();
-    final nextMidnight =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    final d = nextMidnight.difference(now);
-    // Clock skew / edge at rollover: treat non-positive as “just hit midnight”.
+    final nextMonth = DateTime(now.year, now.month + 1, 1);
+    final d = nextMonth.difference(now);
     if (d <= Duration.zero) {
       return Duration.zero;
     }
     return d;
   }
 
+  String get _monthLabel {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final now = DateTime.now();
+    return '${months[now.month - 1]} ${now.year}';
+  }
+
   String get _formattedTimeLeft {
     String two(int n) => n.toString().padLeft(2, '0');
-    final secs = _timeLeft.inSeconds.clamp(0, 86400);
-    final h = secs ~/ 3600;
-    final m = (secs % 3600) ~/ 60;
-    final s = secs % 60;
+    final secs = _timeLeft.inSeconds.clamp(0, 86400 * 31);
+    final days = secs ~/ 86400;
+    final rem = secs % 86400;
+    final h = rem ~/ 3600;
+    final m = (rem % 3600) ~/ 60;
+    final s = rem % 60;
+    if (days > 0) {
+      return '${days}d ${two(h)}:${two(m)}:${two(s)}';
+    }
     return '${two(h)}:${two(m)}:${two(s)}';
   }
 
@@ -659,7 +681,7 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
               ),
               const SizedBox(height: 2),
               Text(
-                'Today • Steps',
+                '$_monthLabel • Monthly steps',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,

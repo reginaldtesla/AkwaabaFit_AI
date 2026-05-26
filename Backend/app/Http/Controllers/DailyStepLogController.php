@@ -13,14 +13,37 @@ use Illuminate\Support\Facades\DB;
 
 class DailyStepLogController extends Controller
 {
-    private function cacheKeyForDate(string $date): string
+    private function cacheKeyForMonth(string $month): string
     {
-        return 'daily_leaderboard:'.$date;
+        return 'monthly_leaderboard:'.$month;
     }
 
-    private function todayCacheKey(): string
+    private function currentMonthKey(): string
     {
-        return 'daily_leaderboard:'.now()->toDateString();
+        return now()->format('Y-m');
+    }
+
+    /**
+     * @return array{0: string, 1: string} [startDate, endDate] inclusive Y-m-d
+     */
+    private function monthBounds(string $month): array
+    {
+        try {
+            $start = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        } catch (\Throwable) {
+            $start = now()->startOfMonth();
+        }
+
+        return [$start->toDateString(), $start->copy()->endOfMonth()->toDateString()];
+    }
+
+    private function resolveMonthKey(?string $month): string
+    {
+        if (is_string($month) && preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return $month;
+        }
+
+        return $this->currentMonthKey();
     }
 
     /**
@@ -48,7 +71,7 @@ class DailyStepLogController extends Controller
         );
 
         // Next viewer refreshes the cached snapshot (max once per TTL).
-        Cache::forget($this->cacheKeyForDate($logDate));
+        Cache::forget($this->cacheKeyForMonth($this->currentMonthKey()));
 
         return response()->json([
             'status' => 'success',
@@ -58,25 +81,30 @@ class DailyStepLogController extends Controller
     }
 
     /**
-     * Get the daily leaderboard.
+     * Monthly leaderboard (steps summed for the calendar month).
      * Results are cached for 5 minutes (300 seconds).
      */
     public function dailyLeaderboard(Request $request): JsonResponse
     {
-        $date = (string) $request->query('date', now()->toDateString());
-        try {
-            $date = Carbon::parse($date)->toDateString();
-        } catch (\Throwable) {
-            $date = now()->toDateString();
+        $month = $this->resolveMonthKey($request->query('month'));
+        if ($request->filled('date') && ! $request->filled('month')) {
+            try {
+                $month = Carbon::parse((string) $request->query('date'))->format('Y-m');
+            } catch (\Throwable) {
+                $month = $this->currentMonthKey();
+            }
         }
 
-        $leaderboard = Cache::remember($this->cacheKeyForDate($date), 300, function () use ($date) {
-            // One row per user per date (unique constraint), so no SUM() needed.
+        [$startDate, $endDate] = $this->monthBounds($month);
+
+        $leaderboard = Cache::remember($this->cacheKeyForMonth($month), 300, function () use ($startDate, $endDate) {
             return User::query()
                 ->join('daily_step_logs', 'users.id', '=', 'daily_step_logs.user_id')
                 ->where('users.is_public_on_leaderboard', true)
-                ->whereDate('daily_step_logs.log_date', $date)
-                ->orderByDesc('daily_step_logs.step_count')
+                ->whereDate('daily_step_logs.log_date', '>=', $startDate)
+                ->whereDate('daily_step_logs.log_date', '<=', $endDate)
+                ->groupBy('users.id', 'users.name', 'users.avatar_url')
+                ->orderByDesc('total_steps')
                 ->orderBy('users.id')
                 ->limit(50)
                 ->get([
@@ -84,36 +112,40 @@ class DailyStepLogController extends Controller
                     'users.name',
                     'users.avatar_url',
                     DB::raw("'Accra' as location"),
-                    DB::raw('daily_step_logs.step_count as total_steps'),
+                    DB::raw('CAST(SUM(daily_step_logs.step_count) AS UNSIGNED) as total_steps'),
                 ]);
         });
 
         return response()->json([
             'status' => 'success',
-            'date' => $date,
+            'period' => 'month',
+            'month' => $month,
             'data' => $leaderboard,
         ]);
     }
 
     /**
-     * Lightweight "my rank" endpoint so the user always knows where they stand.
-     * Does NOT require scanning/sorting the full dataset.
+     * Lightweight "my rank" for the current calendar month.
      */
     public function dailyMe(): JsonResponse
     {
         $user = auth()->user();
-        $today = now()->toDateString();
+        $month = $this->currentMonthKey();
+        [$startDate, $endDate] = $this->monthBounds($month);
 
         $optedIn = (bool) ($user->is_public_on_leaderboard ?? false);
 
-        $stepsToday = (int) DailyStepLog::query()
+        $stepsThisMonth = (int) DailyStepLog::query()
             ->where('user_id', $user->id)
-            ->whereDate('log_date', $today)
-            ->value('step_count') ?? 0;
+            ->whereDate('log_date', '>=', $startDate)
+            ->whereDate('log_date', '<=', $endDate)
+            ->sum('step_count');
 
         if (! $optedIn) {
             return response()->json([
                 'status' => 'success',
+                'period' => 'month',
+                'month' => $month,
                 'optedIn' => false,
                 'user' => [
                     'id' => (string) $user->id,
@@ -121,28 +153,34 @@ class DailyStepLogController extends Controller
                     'avatar_url' => $user->avatar_url,
                     'location' => 'Accra',
                 ],
-                'stepsToday' => $stepsToday,
+                'stepsThisMonth' => (int) $stepsThisMonth,
+                'stepsToday' => (int) $stepsThisMonth,
                 'rank' => null,
                 'totalUsers' => null,
             ]);
         }
 
-        $base = DailyStepLog::query()
+        $monthlyTotals = DailyStepLog::query()
             ->join('users', 'users.id', '=', 'daily_step_logs.user_id')
-            ->whereDate('daily_step_logs.log_date', $today)
-            ->where('users.is_public_on_leaderboard', true);
+            ->whereDate('daily_step_logs.log_date', '>=', $startDate)
+            ->whereDate('daily_step_logs.log_date', '<=', $endDate)
+            ->where('users.is_public_on_leaderboard', true)
+            ->groupBy('daily_step_logs.user_id')
+            ->selectRaw('daily_step_logs.user_id, SUM(daily_step_logs.step_count) as total_steps');
 
-        $totalUsers = (int) (clone $base)
-            ->distinct('daily_step_logs.user_id')
-            ->count('daily_step_logs.user_id');
+        $totalUsers = (int) DB::query()
+            ->fromSub($monthlyTotals, 'monthly_totals')
+            ->count();
 
-        // Rank = count of users strictly above me + 1 (ties share the same rank).
-        $above = (int) (clone $base)
-            ->where('daily_step_logs.step_count', '>', $stepsToday)
+        $above = (int) DB::query()
+            ->fromSub($monthlyTotals, 'monthly_totals')
+            ->where('total_steps', '>', $stepsThisMonth)
             ->count();
 
         return response()->json([
             'status' => 'success',
+            'period' => 'month',
+            'month' => $month,
             'optedIn' => true,
             'user' => [
                 'id' => (string) $user->id,
@@ -150,7 +188,8 @@ class DailyStepLogController extends Controller
                 'avatar_url' => $user->avatar_url,
                 'location' => 'Accra',
             ],
-            'stepsToday' => $stepsToday,
+            'stepsThisMonth' => (int) $stepsThisMonth,
+            'stepsToday' => (int) $stepsThisMonth,
             'rank' => $above + 1,
             'totalUsers' => $totalUsers,
         ]);

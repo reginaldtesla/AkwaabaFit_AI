@@ -4,12 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\DailyStepLog;
 use App\Models\MealLog;
+use App\Services\OpenWeatherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
@@ -144,7 +143,7 @@ class DashboardController extends Controller
 
         $netKcal = $consumedKcal - $burnedKcal;
 
-        [$tempCelsius, $locationLabel, $air] = $this->weatherAndAirQuality();
+        [$tempCelsius, $locationLabel, $air] = app(OpenWeatherService::class)->legacyTuple();
 
         [$alertTitle, $alertMessage] = $this->buildEnvironmentalAlert(
             tempCelsius: $tempCelsius,
@@ -289,85 +288,6 @@ class DashboardController extends Controller
         ];
     }
 
-    private function weatherAndAirQuality(): array
-    {
-        $apiKey = trim((string) config('services.openweather.key', ''));
-        $lat = (float) config('services.openweather.default_lat', 5.6037);
-        $lon = (float) config('services.openweather.default_lon', -0.1870);
-        $fallbackLabel = (string) config('services.openweather.default_label', 'Accra, GH');
-
-        if ($apiKey === '') {
-            return [0.0, $fallbackLabel, []];
-        }
-
-        $cacheKey = "openweather:{$lat}:{$lon}";
-
-        try {
-            // Use file cache to avoid 500s when CACHE_STORE=database without cache tables.
-            return Cache::store('file')->remember($cacheKey, now()->addMinutes(10), function () use ($apiKey, $lat, $lon, $fallbackLabel) {
-                return $this->fetchOpenWeather($apiKey, $lat, $lon, $fallbackLabel);
-            });
-        } catch (\Throwable $e) {
-            // Fail gracefully (never break the dashboard due to weather).
-            try {
-                return $this->fetchOpenWeather($apiKey, $lat, $lon, $fallbackLabel);
-            } catch (\Throwable $e2) {
-                return [0.0, $fallbackLabel, []];
-            }
-        }
-    }
-
-    private function fetchOpenWeather(string $apiKey, float $lat, float $lon, string $fallbackLabel): array
-    {
-        $weather = Http::timeout(6)->get('https://api.openweathermap.org/data/2.5/weather', [
-            'lat' => $lat,
-            'lon' => $lon,
-            'appid' => $apiKey,
-            'units' => 'metric',
-        ]);
-
-        $air = Http::timeout(6)->get('https://api.openweathermap.org/data/2.5/air_pollution', [
-            'lat' => $lat,
-            'lon' => $lon,
-            'appid' => $apiKey,
-        ]);
-
-        $temp = 0.0;
-        $label = $fallbackLabel;
-        $weatherMain = null;
-        $weatherDesc = null;
-
-        if ($weather->ok()) {
-            $temp = (float) data_get($weather->json(), 'main.temp', 0.0);
-            $name = (string) data_get($weather->json(), 'name', '');
-            $country = (string) data_get($weather->json(), 'sys.country', '');
-            $label = trim($name.(strlen($country) ? ", {$country}" : '')) ?: $fallbackLabel;
-            $weatherMain = data_get($weather->json(), 'weather.0.main');
-            $weatherDesc = data_get($weather->json(), 'weather.0.description');
-        }
-
-        $aqi = null;
-        $pm25 = null;
-        $pm10 = null;
-        if ($air->ok()) {
-            $aqi = data_get($air->json(), 'list.0.main.aqi');
-            $pm25 = data_get($air->json(), 'list.0.components.pm2_5');
-            $pm10 = data_get($air->json(), 'list.0.components.pm10');
-        }
-
-        return [
-            $temp,
-            $label,
-            [
-                'aqi' => is_numeric($aqi) ? (int) $aqi : null, // 1..5
-                'pm2_5' => is_numeric($pm25) ? round((float) $pm25, 1) : null,
-                'pm10' => is_numeric($pm10) ? round((float) $pm10, 1) : null,
-                'weatherMain' => $weatherMain ? (string) $weatherMain : null,
-                'weatherDescription' => $weatherDesc ? (string) $weatherDesc : null,
-            ],
-        ];
-    }
-
     private function buildEnvironmentalAlert(
         float $tempCelsius,
         ?int $airQualityAqi,
@@ -401,6 +321,20 @@ class DashboardController extends Controller
             return [
                 'High Heat Advisory',
                 'It’s hot today. Prefer shade, rest breaks, and lower-intensity movement.',
+            ];
+        }
+
+        $main = strtolower(trim((string) ($weatherMain ?? '')));
+        if ($main === 'thunderstorm') {
+            return [
+                'Storm Advisory',
+                'Thunderstorms nearby. Stay indoors when you can—marching, stairs, and light home cardio still count toward your steps.',
+            ];
+        }
+        if (in_array($main, ['rain', 'drizzle'], true)) {
+            return [
+                'Rain Advisory',
+                'Wet conditions today. Skip the outdoor walk if you prefer—indoor steps count the same (home pacing, stairs, or a covered corridor).',
             ];
         }
 
