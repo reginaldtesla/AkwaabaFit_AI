@@ -379,10 +379,26 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Icon(
-                              Icons.directions_walk_rounded,
-                              size: 52,
-                              color: forest,
+                            Center(
+                              child: Container(
+                                width: 84,
+                                height: 84,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(22),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: forest.withValues(alpha: 0.18),
+                                      blurRadius: 18,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Image.asset(
+                                  'assets/icon/app_icon.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 20),
                             Text(
@@ -474,62 +490,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           stops: const [0.0, 0.7],
         ),
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Outer subtle ring
-          Container(
-            width: 160,
-            height: 160,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: forest.withOpacity(0.05)),
+      child: Container(
+        width: 132,
+        height: 132,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(34),
+          boxShadow: [
+            BoxShadow(
+              color: forest.withValues(alpha: 0.14),
+              blurRadius: 26,
+              offset: const Offset(0, 10),
             ),
-          ),
-          // The main white square box
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: forest.withOpacity(0.1)),
-              boxShadow: [
-                BoxShadow(
-                  color: forest.withOpacity(0.12),
-                  blurRadius: 30,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  Icons.health_and_safety, // closely matches shield_with_heart
-                  size: 56,
-                  color: forest.withOpacity(0.9),
-                ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.eco,
-                      size: 18,
-                      color: forest.withOpacity(0.8),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.asset(
+          'assets/icon/app_icon.png',
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }

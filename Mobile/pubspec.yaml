@@ -76,8 +76,8 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/icon/app_icon.png
-  adaptive_icon_background: "#1A5D1A"
-  adaptive_icon_foreground: assets/icon/app_icon.png
+  # Single square icon only — avoids adaptive-layer stretch on some launchers.
+  # (Do not set adaptive_icon_foreground to the full icon; that causes squashing.)
   web:
     generate: true
     image_path: assets/icon/app_icon.png
@@ -95,6 +95,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/icon/app_icon.png
+    - assets/icon/app_icon_logo.png
     - assets/models/food_v1.onnx
     - assets/models/food_labels.json
     - assets/models/food_nutrition_defaults.json

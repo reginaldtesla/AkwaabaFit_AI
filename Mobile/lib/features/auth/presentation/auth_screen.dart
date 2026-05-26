@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -219,13 +218,16 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
-  // Brand Colors
-  final Color primary = const Color(0xFF0D3B2E);
-  final Color medicalBlue = const Color(0xFFF0F7F9);
-  final Color slate800 = const Color(0xFF1E293B);
+  static const Color _primary = Color(0xFF1A5D1A);
+  static const Color _accent = Color(0xFF0FBD74);
+  static const Color _surface = Color(0xFFFFFFFF);
+  static const Color _background = Color(0xFFF4F7F5);
+  static const Color _textPrimary = Color(0xFF0F172A);
+  static const Color _textMuted = Color(0xFF64748B);
+  static const Color _border = Color(0xFFE2E8F0);
 
-  // Form State
   bool _isLogin = true;
+  bool _obscurePassword = true;
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _loginIdentifierController = TextEditingController();
@@ -325,10 +327,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    // Listen for errors and show a SnackBar
     ref.listen<AsyncValue>(authProvider, (_, state) {
       if (!state.isLoading && state.hasError) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        rootScaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: Text(state.error.toString()),
             backgroundColor: Colors.redAccent,
@@ -339,204 +340,64 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: _background,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          // Background Blur Elements
-          Positioned(
-            top: -50,
-            right: -50,
-            child: _buildBlurBlob(
-              Colors.blue.shade50.withOpacity(0.5),
-              300,
-              100,
-            ),
-          ),
-          Positioned(
-            top: 150,
-            left: -50,
-            child: _buildBlurBlob(
-              Colors.green.shade50.withOpacity(0.4),
-              250,
-              80,
-            ),
-          ),
-
+          _buildLoginBackground(context),
           SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24.0,
-                  vertical: 20.0,
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildHeader(),
-                      const SizedBox(height: 32),
-                      _buildTabToggle(),
-                      const SizedBox(height: 32),
-
-                      // The Form
-                      Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            if (!_isLogin) ...[
-                              _buildInputField(
-                                label: 'Full Name',
-                                hint: 'John Doe',
-                                controller: _nameController,
-                                icon: Icons.person_outline,
-                              ),
-                              const SizedBox(height: 20),
-                              _buildInputField(
-                                label: 'Email',
-                                hint: 'name@example.com',
-                                controller: _emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                validator: (value) {
-                                  final v = value?.trim() ?? '';
-                                  if (v.isEmpty) return 'Required';
-                                  if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                                      .hasMatch(v)) {
-                                    return 'Enter a valid email';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 20),
-                              _buildInputField(
-                                label: 'Username',
-                                hint: 'your_username',
-                                controller: _usernameController,
-                                icon: Icons.alternate_email,
-                                validator: (value) {
-                                  final v = value?.trim() ?? '';
-                                  if (v.isEmpty) return 'Username is required';
-                                  if (v.length < 3) return 'At least 3 characters';
-                                  if (!RegExp(r'^[a-zA-Z0-9._-]+$').hasMatch(v)) {
-                                    return 'Letters, numbers, . _ - only';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 20),
-                              _buildInputField(
-                                label: 'Mobile (optional)',
-                                hint: '+233 XX XXX XXXX',
-                                controller: _phoneController,
-                                icon: Icons.phone_android_outlined,
-                                keyboardType: TextInputType.phone,
-                                validator: (value) {
-                                  final raw = value?.trim() ?? '';
-                                  if (raw.isEmpty) return null;
-                                  final digits =
-                                      raw.replaceAll(RegExp(r'\D'), '');
-                                  if (digits.length < 8) {
-                                    return 'Enter a valid phone number';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            if (_isLogin) ...[
-                              _buildInputField(
-                                label: 'Username or mobile number',
-                                hint: 'username or +233…',
-                                controller: _loginIdentifierController,
-                                keyboardType: TextInputType.text,
-                                validator: (value) {
-                                  final v = value?.trim() ?? '';
-                                  if (v.isEmpty) return 'Required';
-                                  if (v.length < 2) return 'Too short';
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            _buildInputField(
-                              label: 'Password',
-                              hint: '••••••••',
-                              controller: _passwordController,
-                              isPassword: true,
-                              showForgot: _isLogin,
-                              onForgotPressed: _isLogin
-                                  ? () {
-                                      Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) => const ForgotPasswordScreen(),
-                                        ),
-                                      );
-                                    }
-                                  : null,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Required';
-                                }
-                                if (!_isLogin && value.length < 8) {
-                                  return 'At least 8 characters';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 32),
-
-                            // Submit Button
-                            SizedBox(
-                              width: double.infinity,
-                              height: 56,
-                              child: ElevatedButton(
-                                onPressed: authState.isLoading ? null : _submit,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: primary,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: authState.isLoading
-                                    ? const SizedBox(
-                                        height: 24,
-                                        width: 24,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          const Icon(
-                                            Icons.lock_outline,
-                                            size: 20,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            'Secure Access',
-                                            style: GoogleFonts.inter(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-                      const SizedBox(height: 48),
-                      _buildFooter(),
-                    ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 40,
+                      maxWidth: 420,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 8),
+                        _buildBrandHeader(),
+                        const SizedBox(height: 28),
+                        _buildAuthCard(authState),
+                        const SizedBox(height: 20),
+                        _buildModeSwitcher(),
+                        const SizedBox(height: 16),
+                        _buildLegalFooter(),
+                      ],
+                    ),
                   ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginBackground(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: _background),
+          Align(
+            alignment: const Alignment(0, -0.35),
+            child: Opacity(
+              opacity: 0.22,
+              child: Image.asset(
+                'assets/icon/app_icon_logo.png',
+                width: width * 0.78,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                errorBuilder: (_, __, ___) => Image.asset(
+                  'assets/icon/app_icon.png',
+                  width: width * 0.78,
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
@@ -546,105 +407,359 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     );
   }
 
-  // --- UI Components ---
-
-  Widget _buildHeader() {
+  Widget _buildBrandHeader() {
     return Column(
       children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: medicalBlue,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.blue.shade50),
-          ),
-          child: Icon(
-            Icons.medical_services_outlined,
-            color: primary,
-            size: 32,
-          ),
-        ),
-        const SizedBox(height: 24),
         Text(
-          'AkwaabaFIT_AI',
-          style: GoogleFonts.inter(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: slate800,
+          'AkwaabaFit',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: _textPrimary,
             letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
-          'Medical Wellness & Nutrition Safety',
+          'Fitness, nutrition & dietitian care',
+          textAlign: TextAlign.center,
           style: GoogleFonts.inter(
             fontSize: 14,
-            color: Colors.blueGrey.shade500,
+            height: 1.4,
+            color: _textMuted,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildTabToggle() {
+  Widget _buildAuthCard(AsyncValue<void> authState) {
     return Container(
+      decoration: BoxDecoration(
+        color: _surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildSegmentedAuthToggle(),
+            const SizedBox(height: 22),
+            Text(
+              _isLogin ? 'Welcome back' : 'Create your account',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: _textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _isLogin
+                  ? 'Sign in to continue tracking your health.'
+                  : 'Join AkwaabaFit to scan meals and track your goals.',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                height: 1.4,
+                color: _textMuted,
+              ),
+            ),
+            const SizedBox(height: 20),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _isLogin ? _buildLoginFields() : _buildSignUpFields(),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              height: 52,
+              child: FilledButton(
+                onPressed: authState.isLoading ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: _primary.withValues(alpha: 0.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: authState.isLoading
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _isLogin ? 'Sign in' : 'Create account',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegmentedAuthToggle() {
+    return Container(
+      height: 44,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade100,
+        color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _isLogin = true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isLogin ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: _isLogin
-                      ? [const BoxShadow(color: Colors.black12, blurRadius: 4)]
-                      : [],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Sign In',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: _isLogin ? FontWeight.w600 : FontWeight.w500,
-                    color: _isLogin ? slate800 : Colors.blueGrey.shade500,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _isLogin = false),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: !_isLogin ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: !_isLogin
-                      ? [const BoxShadow(color: Colors.black12, blurRadius: 4)]
-                      : [],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Sign Up',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: !_isLogin ? FontWeight.w600 : FontWeight.w500,
-                    color: !_isLogin ? slate800 : Colors.blueGrey.shade500,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _segmentTab(label: 'Sign in', selected: _isLogin, onTap: () {
+            if (_isLogin) return;
+            setState(() => _isLogin = true);
+          }),
+          _segmentTab(label: 'Sign up', selected: !_isLogin, onTap: () {
+            if (!_isLogin) return;
+            setState(() => _isLogin = false);
+          }),
         ],
+      ),
+    );
+  }
+
+  Widget _segmentTab({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? _surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? _textPrimary : _textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginFields() {
+    return Column(
+      key: const ValueKey('login_fields'),
+      children: [
+        _buildInputField(
+          label: 'Username or phone',
+          hint: 'e.g. kofi or +233…',
+          controller: _loginIdentifierController,
+          icon: Icons.person_outline_rounded,
+          textInputAction: TextInputAction.next,
+          validator: (value) {
+            final v = value?.trim() ?? '';
+            if (v.isEmpty) return 'Enter your username or phone';
+            if (v.length < 2) return 'Too short';
+            return null;
+          },
+        ),
+        const SizedBox(height: 14),
+        _buildInputField(
+          label: 'Password',
+          hint: 'Your password',
+          controller: _passwordController,
+          isPassword: true,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _submit(),
+          trailing: _passwordVisibilityToggle(),
+          validator: (value) {
+            if (value == null || value.isEmpty) return 'Enter your password';
+            return null;
+          },
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ForgotPasswordScreen(),
+                ),
+              );
+            },
+            child: Text(
+              'Forgot password?',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _primary,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSignUpFields() {
+    return Column(
+      key: const ValueKey('signup_fields'),
+      children: [
+        _buildInputField(
+          label: 'Full name',
+          hint: 'Your name',
+          controller: _nameController,
+          icon: Icons.badge_outlined,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 14),
+        _buildInputField(
+          label: 'Email',
+          hint: 'you@example.com',
+          controller: _emailController,
+          icon: Icons.mail_outline_rounded,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          validator: (value) {
+            final v = value?.trim() ?? '';
+            if (v.isEmpty) return 'Email is required';
+            if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v)) {
+              return 'Enter a valid email';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 14),
+        _buildInputField(
+          label: 'Username',
+          hint: 'Choose a username',
+          controller: _usernameController,
+          icon: Icons.alternate_email_rounded,
+          textInputAction: TextInputAction.next,
+          validator: (value) {
+            final v = value?.trim() ?? '';
+            if (v.isEmpty) return 'Username is required';
+            if (v.length < 3) return 'At least 3 characters';
+            if (!RegExp(r'^[a-zA-Z0-9._-]+$').hasMatch(v)) {
+              return 'Letters, numbers, . _ - only';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 14),
+        _buildInputField(
+          label: 'Phone (optional)',
+          hint: '+233 XX XXX XXXX',
+          controller: _phoneController,
+          icon: Icons.phone_android_rounded,
+          keyboardType: TextInputType.phone,
+          textInputAction: TextInputAction.next,
+          validator: (value) {
+            final raw = value?.trim() ?? '';
+            if (raw.isEmpty) return null;
+            final digits = raw.replaceAll(RegExp(r'\D'), '');
+            if (digits.length < 8) return 'Enter a valid phone number';
+            return null;
+          },
+        ),
+        const SizedBox(height: 14),
+        _buildInputField(
+          label: 'Password',
+          hint: 'At least 8 characters',
+          controller: _passwordController,
+          isPassword: true,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _submit(),
+          trailing: _passwordVisibilityToggle(),
+          validator: (value) {
+            if (value == null || value.isEmpty) return 'Password is required';
+            if (value.length < 8) return 'At least 8 characters';
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _passwordVisibilityToggle() {
+    return IconButton(
+      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+      icon: Icon(
+        _obscurePassword
+            ? Icons.visibility_outlined
+            : Icons.visibility_off_outlined,
+        color: _textMuted,
+        size: 22,
+      ),
+    );
+  }
+
+  Widget _buildModeSwitcher() {
+    return TextButton(
+      onPressed: () => setState(() => _isLogin = !_isLogin),
+      child: RichText(
+        textAlign: TextAlign.center,
+        text: TextSpan(
+          style: GoogleFonts.inter(fontSize: 14, color: _textMuted),
+          children: [
+            TextSpan(
+              text: _isLogin
+                  ? 'New to AkwaabaFit? '
+                  : 'Already have an account? ',
+            ),
+            TextSpan(
+              text: _isLogin ? 'Create account' : 'Sign in',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegalFooter() {
+    return Text(
+      'By continuing, you agree to use AkwaabaFit for personal wellness tracking. Your password is stored securely.',
+      textAlign: TextAlign.center,
+      style: GoogleFonts.inter(
+        fontSize: 11,
+        height: 1.45,
+        color: _textMuted.withValues(alpha: 0.9),
       ),
     );
   }
@@ -654,110 +769,68 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     required String hint,
     required TextEditingController controller,
     bool isPassword = false,
-    bool showForgot = false,
-    VoidCallback? onForgotPressed,
     IconData? icon,
     TextInputType keyboardType = TextInputType.text,
+    TextInputAction textInputAction = TextInputAction.next,
+    void Function(String)? onFieldSubmitted,
+    Widget? trailing,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 6),
-              child: Text(
-                label.toUpperCase(),
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
-                  color: Colors.blueGrey.shade400,
-                ),
-              ),
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 6),
+          child: Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: _textPrimary,
             ),
-            if (showForgot && onForgotPressed != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 4, bottom: 6),
-                child: TextButton(
-                  onPressed: onForgotPressed,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'Forgot?',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: primary.withOpacity(0.8),
-                    ),
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
         TextFormField(
           controller: controller,
-          obscureText: isPassword,
+          obscureText: isPassword && _obscurePassword,
           keyboardType: keyboardType,
-          validator:
-              validator ?? ((value) => value!.isEmpty ? 'Required' : null),
-          style: GoogleFonts.inter(color: slate800),
+          textInputAction: textInputAction,
+          onFieldSubmitted: onFieldSubmitted,
+          validator: validator ?? ((v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+          style: GoogleFonts.inter(
+            fontSize: 15,
+            color: _textPrimary,
+            fontWeight: FontWeight.w500,
+          ),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: GoogleFonts.inter(color: Colors.blueGrey.shade400),
+            hintStyle: GoogleFonts.inter(color: _textMuted.withValues(alpha: 0.75)),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: const Color(0xFFF8FAFC),
             prefixIcon: icon != null
-                ? Icon(icon, color: Colors.blueGrey.shade400)
+                ? Icon(icon, color: _textMuted, size: 22)
                 : null,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 16,
-            ),
+            suffixIcon: trailing,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.blueGrey.shade200),
+              borderSide: const BorderSide(color: _border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.blueGrey.shade200),
+              borderSide: const BorderSide(color: _border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primary.withOpacity(0.5), width: 2),
+              borderSide: const BorderSide(color: _accent, width: 2),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFEF4444)),
             ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildFooter() {
-    return Text(
-      'Your data is protected by end-to-end encryption. By logging in, you agree to our Terms of Care.',
-      textAlign: TextAlign.center,
-      style: GoogleFonts.inter(
-        fontSize: 11,
-        height: 1.5,
-        color: Colors.blueGrey.shade400,
-      ),
-    );
-  }
-
-  Widget _buildBlurBlob(Color color, double size, double blurRadius) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurRadius, sigmaY: blurRadius),
-        child: Container(color: Colors.transparent),
-      ),
     );
   }
 }
