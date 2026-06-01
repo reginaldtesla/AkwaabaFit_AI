@@ -1,19 +1,15 @@
-$python = "c:\Apache24\htdocs\AkwaabaFitAIProject\AI\venv\Scripts\python.exe"
-$script = "c:\Apache24\htdocs\AkwaabaFitAIProject\AI\train.py"
-$csv = "c:\Apache24\htdocs\AkwaabaFitAIProject\AI\runs\detect\food_model_v2\results.csv"
-$weights = "c:\Apache24\htdocs\AkwaabaFitAIProject\AI\runs\detect\food_model_v2\weights"
+# Chunked auto-restart training — tuned for Regi's RTX 4050 / 16GB RAM laptop.
+# Run from repo root or AI folder:
+#   .\AI\train_loop.ps1
 
-# Train at most this many epoch indices per Python process, then exit cleanly and restart (reduces hangs / zombies).
-$env:AKWAABA_CHUNK_EPOCHS = "5"
-# Fresh optimizer each resume (fixes cuBLAS backward crashes from stale checkpoint optimizer state).
-$env:AKWAABA_FRESH_OPTIMIZER = "1"
-# Small speed boost (restart train_loop to apply). If OOM/crash, set AKWAABA_BATCH=1
-$env:AKWAABA_BATCH = "2"
-$env:AKWAABA_CACHE = "disk"
-# If RAM spikes, keep workers at 0. If CPU is the bottleneck, try: $env:AKWAABA_WORKERS = "2"
-if (-not $env:AKWAABA_WORKERS) { $env:AKWAABA_WORKERS = "0" }
-# Use CPU only if GPU still crashes after reboot: $env:AKWAABA_DEVICE = "cpu"
-if (-not $env:AKWAABA_DEVICE) { $env:AKWAABA_DEVICE = "0" }
+$ErrorActionPreference = "Stop"
+$AiDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $AiDir "train_env.ps1")
+
+$python = if ($env:AKWAABA_PYTHON) { $env:AKWAABA_PYTHON } else { "python" }
+$script = Join-Path $AiDir "train.py"
+$csv = Join-Path $AiDir "runs\detect\food_model_v2\results.csv"
+$weights = Join-Path $AiDir "runs\detect\food_model_v2\weights"
 
 function Stop-OrphanTrainPy {
     $killed = 0

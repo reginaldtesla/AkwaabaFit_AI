@@ -2,27 +2,38 @@
 Merge all YOLO datasets (original + new) into one unified training set.
 Normalises class names, deduplicates, and creates train/valid/test splits.
 """
-import shutil, yaml, re
+import random
+import shutil
+import yaml
+import re
 from pathlib import Path
 from collections import defaultdict
 
 AI_DIR = Path(__file__).resolve().parent
 MERGED = AI_DIR / "datasets" / "merged_v2"
 
-# ---------- datasets to include ----------
+# ---------- datasets to include (new_raw only; bad sets removed — see excluded_from_training.json) ----------
+NEW_RAW = AI_DIR / "datasets" / "new_raw"
 DATASETS = {
-    # original two
-    "ghanaian": AI_DIR / "datasets" / "ghanaian_food_yolov8",
-    "food_v1": AI_DIR / "datasets" / "food_yolov8",
-    # new downloads
-    "food_dataset_2": AI_DIR / "datasets" / "new_raw" / "Food Dataset.yolov8_2",
-    "food_v2":        AI_DIR / "datasets" / "new_raw" / "Food.yolov8_2",
-    "food_v3":        AI_DIR / "datasets" / "new_raw" / "food.yolov8_3",
-    "food_v4":        AI_DIR / "datasets" / "new_raw" / "food.yolov8_4",
-    "food_v5":        AI_DIR / "datasets" / "new_raw" / "Food.yolov8_5",
-    "food_v6":        AI_DIR / "datasets" / "new_raw" / "food.yolov8_6",
-    "food_v7":        AI_DIR / "datasets" / "new_raw" / "food.yolov8_7",
+    "ghanaian": NEW_RAW / "Ghanaian_food.yolov8",
+    "food_base": NEW_RAW / "food.yolov8",
+    "food_dataset": NEW_RAW / "Food_Dataset.yolov8",
+    "food_dataset_2": NEW_RAW / "Food_Dataset.yolov8_2",
+    "food_v2": NEW_RAW / "Food.yolov8_2",
+    "food_v3": NEW_RAW / "food.yolov8_3",
+    "food_v5": NEW_RAW / "Food.yolov8_5",
+    "food_v6": NEW_RAW / "food.yolov8_6",
+    "food_v7": NEW_RAW / "food.yolov8_7",
 }
+
+# Reject corrupted Roboflow exports (readme lines saved as class names).
+_BAD_CLASS_MARKERS = (
+    "roboflow",
+    "auto-orientation",
+    "visit https",
+    "computer vision",
+    "dataset was exported",
+)
 
 # ---------- class normalisation map ----------
 # Maps raw class names (lowercased) to a unified label.
@@ -30,7 +41,12 @@ DATASETS = {
 CLASS_MAP = {
     # Ghanaian
     "banku": "banku", "fufu": "fufu", "jollof_rice": "jollof_rice",
-    "jollof rice": "jollof_rice", "waakye": "waakye", "kenkey": "kenkey",
+    "jollof": "jollof", "jollof_rice": "jollof", "jollof rice": "jollof",
+    "waakye": "waakye", "kenkey": "kenkey",
+    "egg-and-pepper": "egg_pepper", "egg and pepper": "egg_pepper",
+    "plain-rice": "rice", "plain rice": "rice",
+    "hausa-koko": "hausa_koko", "nkate-cake": "nkate_cake", "kokonte": "kokonte",
+    "koose": "koose",
     "kelewele": "kelewele", "gari": "gari", "shito": "shito",
     "groundnut_soup": "groundnut_soup", "groundnut soup": "groundnut_soup",
     "palm_nut_soup": "palm_nut_soup", "palm nut soup": "palm_nut_soup",
@@ -123,6 +139,26 @@ def load_yaml_classes(yaml_path: Path) -> list[str]:
     return data.get("names", [])
 
 
+def dataset_is_trainable(ds_root: Path) -> bool:
+    yaml_path = ds_root / "data.yaml"
+    if not yaml_path.exists():
+        return False
+    names = load_yaml_classes(yaml_path)
+    if not names:
+        return False
+    joined = " ".join(str(n).lower() for n in names)
+    if any(m in joined for m in _BAD_CLASS_MARKERS):
+        return False
+    train_imgs = ds_root / "train" / "images"
+    if train_imgs.is_dir() and any(train_imgs.iterdir()):
+        return True
+    for split in ("valid", "test"):
+        d = ds_root / split / "images"
+        if d.is_dir() and any(d.iterdir()):
+            return True
+    return False
+
+
 def process_dataset(ds_name, ds_root, unified_names, name_to_id, split_counts):
     yaml_path = ds_root / "data.yaml"
     if not yaml_path.exists():
@@ -196,6 +232,12 @@ def main():
     split_counts = defaultdict(int)
 
     for ds_name, ds_root in DATASETS.items():
+        if not ds_root.is_dir():
+            print(f"  SKIP {ds_name}: missing {ds_root}")
+            continue
+        if not dataset_is_trainable(ds_root):
+            print(f"  SKIP {ds_name}: not trainable (empty or bad labels)")
+            continue
         print(f"Processing {ds_name} ...")
         process_dataset(ds_name, ds_root, unified_names, name_to_id, split_counts)
 
@@ -218,7 +260,32 @@ def main():
           f"valid={split_counts['valid']}, test={split_counts['test']}, "
           f"total={sum(split_counts.values())}")
     print(f"Output: {MERGED}")
+    _hold_out_valid_split()
     print("Done!")
+
+
+def _hold_out_valid_split(val_fraction: float = 0.1, min_val: int = 500) -> None:
+    """Ultralytics requires valid/images; hold out from train after merge."""
+    train_img = MERGED / "train" / "images"
+    train_lbl = MERGED / "train" / "labels"
+    valid_img = MERGED / "valid" / "images"
+    valid_lbl = MERGED / "valid" / "labels"
+    valid_img.mkdir(parents=True, exist_ok=True)
+    valid_lbl.mkdir(parents=True, exist_ok=True)
+
+    images = [p for p in train_img.iterdir() if p.is_file()]
+    n_val = max(min_val, int(len(images) * val_fraction))
+    random.seed(42)
+    picked = set(random.sample(images, min(n_val, len(images))))
+    for img in picked:
+        dst = valid_img / img.name
+        if dst.exists():
+            continue
+        shutil.move(img, dst)
+        lbl = train_lbl / f"{img.stem}.txt"
+        if lbl.is_file():
+            shutil.move(lbl, valid_lbl / lbl.name)
+    print(f"Valid hold-out: {len(list(valid_img.iterdir()))} images")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,14 @@ class AiScanResult {
   final bool isGenericFallback;
   final bool isRefiningNutrition;
 
+  /// Multi-food plates: candidate detections + selected items.
+  /// `className` values match `food_labels.json` entries.
+  final List<AiDetectedFoodItem> detectedItems;
+  final List<String> selectedClassNames;
+
+  /// Original image path (camera/gallery) for logging.
+  final String? imagePath;
+
   /// Set after [NutritionRepository.logMeal] succeeds (triggers history navigation).
   final bool mealSaved;
 
@@ -54,6 +62,9 @@ class AiScanResult {
     this.portionLabel = '1 serving',
     this.isGenericFallback = false,
     this.isRefiningNutrition = false,
+    this.detectedItems = const [],
+    this.selectedClassNames = const [],
+    this.imagePath,
     this.mealSaved = false,
   });
 
@@ -71,6 +82,9 @@ class AiScanResult {
     String? portionLabel,
     bool? isGenericFallback,
     bool? isRefiningNutrition,
+    List<AiDetectedFoodItem>? detectedItems,
+    List<String>? selectedClassNames,
+    String? imagePath,
     bool? mealSaved,
   }) {
     return AiScanResult(
@@ -89,9 +103,26 @@ class AiScanResult {
       portionLabel: portionLabel ?? this.portionLabel,
       isGenericFallback: isGenericFallback ?? this.isGenericFallback,
       isRefiningNutrition: isRefiningNutrition ?? this.isRefiningNutrition,
+      detectedItems: detectedItems ?? this.detectedItems,
+      selectedClassNames: selectedClassNames ?? this.selectedClassNames,
+      imagePath: imagePath ?? this.imagePath,
       mealSaved: mealSaved ?? this.mealSaved,
     );
   }
+}
+
+class AiDetectedFoodItem {
+  const AiDetectedFoodItem({
+    required this.className,
+    required this.displayName,
+    required this.confidence,
+    required this.nutrition,
+  });
+
+  final String className;
+  final String displayName;
+  final double confidence;
+  final FoodNutritionInfo nutrition;
 }
 
 final aiScannerProvider =
@@ -121,67 +152,56 @@ class AiScannerNotifier extends AsyncNotifier<AiScanResult?> {
         );
       }
 
-      final top = detections.first;
       final hybrid = await ref.read(hybridNutritionProvider.future);
-      final nutrition = await hybrid.resolve(top.className);
-      final alternates = detections.skip(1).take(3).map((d) {
-        return d.className
-            .replaceAll('-', ' ')
-            .split(' ')
-            .map((w) =>
-                w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
-            .join(' ');
-      }).toList();
 
-      var result = _resultFromNutrition(
-        nutrition,
-        confidence: top.confidence,
-        alternates: alternates,
-      );
+      // Resolve nutrition for the top few detections so multi-food plates can be selected.
+      final topDetections = detections.take(5).toList(growable: false);
+      final items = <AiDetectedFoodItem>[];
+      for (final d in topDetections) {
+        final nutrition = await hybrid.resolve(d.className);
+        items.add(
+          AiDetectedFoodItem(
+            className: d.className,
+            displayName: nutrition.displayName,
+            confidence: d.confidence,
+            nutrition: nutrition,
+          ),
+        );
+      }
 
-      state = AsyncValue.data(
-        result.copyWith(isRefiningNutrition: true),
-      );
-
-      final mealPayload = _mealPayload(
-        result: result,
+      // Default selection: top-1 detection.
+      final selected = <String>[topDetections.first.className];
+      final result = _aggregateFromSelected(
+        items: items,
+        selectedClassNames: selected,
         imagePath: image.path,
-        topClassName: top.className,
-        topClassIndex: top.classIndex,
-        alternates: alternates,
       );
 
-      final repo = ref.read(nutritionRepositoryProvider);
-      final ids = await repo.logMeal(mealPayload);
-      ref.invalidate(nutritionHistoryProvider);
+      state = AsyncValue.data(result);
 
-      state = AsyncValue.data(result.copyWith(mealSaved: true));
-
-      final refreshed = await hybrid.refreshFromServer(top.className);
-      if (refreshed != null &&
-          refreshed.isMeaningfullyDifferentFrom(nutrition)) {
-        result = _resultFromNutrition(
-          refreshed,
-          confidence: top.confidence,
-          alternates: alternates,
+      // Best-effort: refresh nutrition for the selected top class when online (does not log yet).
+      state = AsyncValue.data(result.copyWith(isRefiningNutrition: true));
+      final refreshed = await hybrid.refreshFromServer(selected.first);
+      if (refreshed != null) {
+        final nextItems = items
+            .map((it) => it.className == selected.first
+                ? AiDetectedFoodItem(
+                    className: it.className,
+                    displayName: refreshed.displayName,
+                    confidence: it.confidence,
+                    nutrition: refreshed,
+                  )
+                : it)
+            .toList(growable: false);
+        state = AsyncValue.data(
+          _aggregateFromSelected(
+            items: nextItems,
+            selectedClassNames: selected,
+            imagePath: image.path,
+          ).copyWith(isRefiningNutrition: false),
         );
-        final updatedPayload = _mealPayload(
-          result: result,
-          imagePath: image.path,
-          topClassName: top.className,
-          topClassIndex: top.classIndex,
-          alternates: alternates,
-        );
-        await repo.updateLoggedMeal(
-          mealCacheId: ids.mealCacheId,
-          outboxId: ids.outboxId,
-          meal: updatedPayload,
-        );
-        if (await hybrid.isOnline()) {
-          await repo.syncPendingIfAny();
-        }
-        ref.invalidate(nutritionHistoryProvider);
-        state = AsyncValue.data(result.copyWith(mealSaved: true));
+      } else {
+        state = AsyncValue.data(result.copyWith(isRefiningNutrition: false));
       }
     } catch (e, st) {
       final raw = e.toString();
@@ -194,40 +214,126 @@ class AiScannerNotifier extends AsyncNotifier<AiScanResult?> {
     }
   }
 
+  void toggleDetectedItem(String className) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    final items = current.detectedItems;
+    if (items.isEmpty) return;
+
+    final selected = [...current.selectedClassNames];
+    if (selected.contains(className)) {
+      // Keep at least one item selected.
+      if (selected.length <= 1) return;
+      selected.remove(className);
+    } else {
+      selected.add(className);
+    }
+
+    state = AsyncValue.data(
+      _aggregateFromSelected(
+        items: items,
+        selectedClassNames: selected,
+        imagePath: current.imagePath,
+      ).copyWith(
+        isRefiningNutrition: current.isRefiningNutrition,
+      ),
+    );
+  }
+
+  Future<void> logCurrentSelection() async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    if (current.mealSaved) return;
+    final imagePath = current.imagePath;
+    if (imagePath == null || imagePath.isEmpty) {
+      throw StateError('Missing image for this scan. Please scan again.');
+    }
+
+    state = AsyncValue.data(current.copyWith(isRefiningNutrition: true));
+    try {
+      final repo = ref.read(nutritionRepositoryProvider);
+      final payload = _mealPayloadFromAggregate(current);
+      await repo.logMeal(payload);
+      ref.invalidate(nutritionHistoryProvider);
+      state = AsyncValue.data(current.copyWith(mealSaved: true, isRefiningNutrition: false));
+    } catch (e, st) {
+      state = AsyncValue.error('Could not log meal. ${e.toString()}', st);
+    }
+  }
+
   void clearScan() {
     state = const AsyncValue.data(null);
   }
 
-  AiScanResult _resultFromNutrition(
-    FoodNutritionInfo nutrition, {
-    required double confidence,
-    required List<String> alternates,
+  AiScanResult _aggregateFromSelected({
+    required List<AiDetectedFoodItem> items,
+    required List<String> selectedClassNames,
+    required String? imagePath,
   }) {
+    final selected = items
+        .where((it) => selectedClassNames.contains(it.className))
+        .toList(growable: false);
+    final primary = selected.isNotEmpty ? selected.first : items.first;
+
+    final calories = selected.fold<int>(0, (s, it) => s + it.nutrition.calories);
+    final protein = selected.fold<int>(0, (s, it) => s + it.nutrition.proteinG);
+    final carbs = selected.fold<int>(0, (s, it) => s + it.nutrition.carbsG);
+    final fat = selected.fold<int>(0, (s, it) => s + it.nutrition.fatG);
+    final iron = selected.fold<double>(0, (s, it) => s + it.nutrition.ironMg);
+    final folate = selected.fold<int>(0, (s, it) => s + it.nutrition.folateMcg);
+
+    final anyCaution = selected.any((it) => it.nutrition.safetyStatus != 'safe');
+    final safety = anyCaution ? 'caution' : 'safe';
+
+    final source = selected.any((it) => it.nutrition.source == 'server')
+        ? 'server'
+        : selected.any((it) => it.nutrition.source == 'cache')
+            ? 'cache'
+            : 'bundled';
+
+    final label = selected.length <= 1
+        ? primary.nutrition.portionLabel
+        : '1 plate (multi‑item)';
+
+    final name = selected.length <= 1
+        ? primary.displayName
+        : selected.map((e) => e.displayName).take(3).join(' + ') +
+            (selected.length > 3 ? ' + more' : '');
+
+    // Alternates: show other detections not selected.
+    final alternates = items
+        .where((it) => !selectedClassNames.contains(it.className))
+        .take(3)
+        .map((it) => it.displayName)
+        .toList(growable: false);
+
     return AiScanResult(
-      name: nutrition.displayName,
-      calories: nutrition.calories,
-      proteinG: nutrition.proteinG,
-      carbsG: nutrition.carbsG,
-      fatG: nutrition.fatG,
-      ironMg: nutrition.ironMg,
-      folateMcg: nutrition.folateMcg,
-      safetyStatus: nutrition.safetyStatus,
-      insightMessage: nutrition.insightMessage,
-      nutritionSource: nutrition.source,
-      portionLabel: nutrition.portionLabel,
-      isGenericFallback: nutrition.isGenericFallback,
-      confidence: confidence,
+      name: name,
+      calories: calories,
+      proteinG: protein,
+      carbsG: carbs,
+      fatG: fat,
+      ironMg: iron,
+      folateMcg: folate,
+      safetyStatus: safety,
+      insightMessage: primary.nutrition.insightMessage,
+      nutritionSource: source,
+      portionLabel: label,
+      isGenericFallback: selected.any((it) => it.nutrition.isGenericFallback),
+      confidence: primary.confidence,
       alternateLabels: alternates,
+      detectedItems: items,
+      selectedClassNames: selectedClassNames,
+      imagePath: imagePath,
     );
   }
 
-  Map<String, dynamic> _mealPayload({
-    required AiScanResult result,
-    required String imagePath,
-    required String topClassName,
-    required int topClassIndex,
-    required List<String> alternates,
-  }) {
+  Map<String, dynamic> _mealPayloadFromAggregate(AiScanResult result) {
+    final selected = result.selectedClassNames;
+    final detected = result.detectedItems;
+    final primary = selected.isNotEmpty ? selected.first : null;
+    final primaryIndex = detected.indexWhere((d) => d.className == primary);
+
     return {
       'eaten_at': DateTime.now().toIso8601String(),
       'meal_type': null,
@@ -243,15 +349,24 @@ class AiScannerNotifier extends AsyncNotifier<AiScanResult?> {
       'meta': {
         'iron_mg': result.ironMg,
         'folate_mcg': result.folateMcg,
-        'image_path': imagePath,
+        'image_path': result.imagePath,
         'model': 'food_v1_onnx',
         'confidence': result.confidence,
-        'class_id': topClassIndex,
-        'class_name': topClassName,
-        'alternates': alternates,
+        'class_id': primaryIndex >= 0 ? primaryIndex : null,
+        'class_name': primary,
+        'alternates': result.alternateLabels,
         'nutrition_source': result.nutritionSource,
         'portion_label': result.portionLabel,
         'is_generic_fallback': result.isGenericFallback,
+        'selected_items': selected,
+        'detections': [
+          for (final d in detected)
+            {
+              'class_name': d.className,
+              'display_name': d.displayName,
+              'confidence': d.confidence,
+            }
+        ],
       },
     };
   }
@@ -708,6 +823,48 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
                         fatG: result.fatG,
                         fontSize: 13,
                       ),
+                      if (result.detectedItems.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Detected items (tap to include)',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.blueGrey.shade500,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: result.detectedItems.map((item) {
+                            final selected = result.selectedClassNames
+                                .contains(item.className);
+                            return FilterChip(
+                              selected: selected,
+                              label: Text(
+                                '${item.displayName} ${(item.confidence * 100).toStringAsFixed(0)}%',
+                              ),
+                              onSelected: (_) {
+                                ref
+                                    .read(aiScannerProvider.notifier)
+                                    .toggleDetectedItem(item.className);
+                              },
+                              labelStyle: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: selected ? Colors.white : slate800,
+                              ),
+                              selectedColor: secondaryBlue,
+                              backgroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.blueGrey.shade200,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
                       if (result.alternateLabels.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -809,15 +966,7 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
                   flex: 2,
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      try {
-                        await ref
-                            .read(nutritionRepositoryProvider)
-                            .syncPendingIfAny();
-                        ref.invalidate(nutritionHistoryProvider);
-                      } catch (_) {
-                        ref.invalidate(nutritionHistoryProvider);
-                      }
-                      _openNutritionHistory();
+                      await ref.read(aiScannerProvider.notifier).logCurrentSelection();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: slate900,
@@ -830,7 +979,7 @@ class _AiScannerScreenState extends ConsumerState<AiScannerScreen> {
                     ),
                     icon: const Icon(Icons.add_circle_outline),
                     label: Text(
-                      'LOG MEAL',
+                      result.mealSaved ? 'SAVED' : 'LOG MEAL',
                       style: GoogleFonts.inter(fontWeight: FontWeight.bold),
                     ),
                   ),

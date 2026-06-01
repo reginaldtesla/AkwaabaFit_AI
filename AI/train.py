@@ -10,6 +10,7 @@ Chunked laptop runs (clean exit, then auto-resume via train_loop.ps1):
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -24,25 +25,42 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.enabled = False
 
 AI_DIR = Path(__file__).resolve().parent
+HARDWARE_PROFILE = AI_DIR / "hardware_profile.json"
 DATA_YAML = AI_DIR / "datasets" / "merged_v2" / "data.yaml"
 PROJECT = str(AI_DIR / "runs" / "detect")
 NAME = "food_model_v2"
 
-EPOCHS = 200
-IMG_SIZE = int(os.environ.get("AKWAABA_IMG_SIZE", "416"))
-# batch=2 ~40% faster epochs on 6GB VRAM (yolov8n @416 uses ~0.2GB at batch=1)
-BATCH = int(os.environ.get("AKWAABA_BATCH", "2"))
-WORKERS = int(os.environ.get("AKWAABA_WORKERS", "0"))
-FRACTION = float(os.environ.get("AKWAABA_FRACTION", "0.25"))
-# disk cache speeds up epochs after the first (safe with workers=0 on Windows)
-_CACHE = os.environ.get("AKWAABA_CACHE", "disk")
+
+def _hw_training_defaults() -> dict:
+    """Values from hardware_profile.json (Regi laptop: RTX 4050 6GB, 16GB RAM)."""
+    if not HARDWARE_PROFILE.exists():
+        return {}
+    try:
+        data = json.loads(HARDWARE_PROFILE.read_text(encoding="utf-8"))
+        return data.get("training") or {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+_HW = _hw_training_defaults()
+
+EPOCHS = int(_HW.get("epochs", 200))
+IMG_SIZE = int(os.environ.get("AKWAABA_IMG_SIZE", str(_HW.get("imgsz", 416))))
+# RTX 4050 6GB: batch=2 for yolov8n@416; use AKWAABA_BATCH=1 if OOM
+BATCH = int(os.environ.get("AKWAABA_BATCH", str(_HW.get("batch", 2))))
+# 16GB RAM + Windows: workers>0 often spikes RAM during DataLoader spawn
+WORKERS = int(os.environ.get("AKWAABA_WORKERS", str(_HW.get("workers", 0))))
+FRACTION = float(os.environ.get("AKWAABA_FRACTION", str(_HW.get("fraction", 1.0))))
+# disk cache: fast repeat epochs without filling 16GB RAM (needs free disk on C:)
+_CACHE = os.environ.get("AKWAABA_CACHE", str(_HW.get("cache", "disk")))
 
 # Each Python process trains at most this many epoch steps when resuming (0 = disabled).
+# Set via train_env.ps1 / train_loop.ps1 (recommended 5 on this laptop). Default off for one-shot train.py.
 _CHUNK = int(os.environ.get("AKWAABA_CHUNK_EPOCHS", "0"))
 # Drop optimizer/scaler from last.pt before resume (fixes recurring cuBLAS backward crashes on this laptop).
 _FRESH_OPTIMIZER = os.environ.get("AKWAABA_FRESH_OPTIMIZER", "1") != "0"
 # Set AKWAABA_DEVICE=cpu if GPU keeps failing after a reboot (slow but stable).
-_DEVICE = os.environ.get("AKWAABA_DEVICE", "0")
+_DEVICE = os.environ.get("AKWAABA_DEVICE", str(_HW.get("device", "0")))
 
 # Low-RAM / small-GPU laptop defaults (must match on resume or checkpoint restores batch=4 + mosaic).
 _TRAIN_OVERRIDES = dict(
@@ -254,9 +272,12 @@ def main() -> None:
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
 
+    if HARDWARE_PROFILE.exists():
+        print(f"Hardware profile: {HARDWARE_PROFILE.name}", flush=True)
     print(
         f"Speed settings: batch={BATCH}, workers={WORKERS}, imgsz={IMG_SIZE}, "
-        f"fraction={FRACTION}, cache={_TRAIN_OVERRIDES.get('cache', False)}",
+        f"fraction={FRACTION}, cache={_TRAIN_OVERRIDES.get('cache', False)}, "
+        f"device={_DEVICE}, chunk_epochs={_CHUNK or 'off'}",
         flush=True,
     )
 
