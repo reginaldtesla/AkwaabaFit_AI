@@ -4,6 +4,8 @@ Culturally adapted fitness and nutrition app for Ghanaians. Users track activity
 
 **Stack:** Laravel 12 API · Flutter mobile app · YOLOv8 food model training pipeline
 
+> **Production install (ProBook + Cloudflare):** start with **[`installation`](installation)** — step-by-step from zero (Windows dev, Ubuntu deploy, Paystack, mobile API URL).
+
 ## What the app is supposed to do
 
 AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and get professional nutrition guidance** in one mobile app. It is built around local food and everyday life—not generic Western meal plans.

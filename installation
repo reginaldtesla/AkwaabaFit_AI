@@ -1,0 +1,773 @@
+# AkwaabaFit AI — Installation guide (from zero)
+
+This guide assumes you have **never deployed this project before**. It walks through:
+
+1. **Windows PC** — run the API locally while building the Flutter app  
+2. **HP ProBook (Ubuntu)** — production API with **Cloudflare** (HTTPS for mobile + Paystack)  
+3. **Mobile app** — point Flutter at your API URL  
+
+The repo has three folders:
+
+| Folder | What it is | Runs on server? |
+|--------|------------|-----------------|
+| **`Backend/`** | Laravel API, admin web, Paystack webhooks | **Yes** (ProBook) |
+| **`Mobile/`** | Flutter app (Android / iOS) | No — build on your PC |
+| **`AI/`** | YOLO training scripts (optional) | No — only if retraining the food model |
+
+**Food scanning** uses an **ONNX model bundled in the mobile app**. You do **not** need Python on the ProBook for normal operation.
+
+---
+
+## 0. What you are building (picture)
+
+```text
+[ Flutter app on phone ]
+        │  HTTPS JSON  /api/*
+        ▼
+[ Cloudflare ] ──► [ Cloudflare Tunnel on ProBook ]
+                          │
+                          ▼
+                   [ Apache :80 ]
+                          │
+                          ▼
+              [ Laravel Backend/public ]
+                          │
+                          ▼
+                   [ MariaDB: akwaabafit ]
+```
+
+Paystack sends webhooks to the same public HTTPS host:
+
+```text
+https://api.YOUR-DOMAIN.com/api/webhook/paystack
+```
+
+If the **same ProBook** also runs **TesNet** (`192.168.88.2`), that is fine — different folder, different database, different domain. See [§12 Running alongside TesNet](#12-running-alongside-tesnet-on-the-same-probook).
+
+---
+
+## 1. Before you start — checklist
+
+Gather these **before** production deploy:
+
+| Item | Example | Where it goes |
+|------|---------|---------------|
+| Domain on Cloudflare | `akwaabafit.ai` | DNS + Tunnel |
+| API subdomain | `api.akwaabafit.ai` | `APP_URL` in `.env` |
+| Paystack keys | `pk_test_…` / `sk_test_…` | Backend `.env` |
+| OpenWeather key | from openweathermap.org | Backend `.env` |
+| Firebase project | FCM for push | JSON file + `.env` |
+| Strong DB password | 32+ random chars | MariaDB + `.env` |
+| Admin staff user | created after migrate | `/admin/login` |
+
+**Do not commit** `.env` or Firebase JSON to Git.
+
+---
+
+## 2. Part A — Windows PC (local development)
+
+Use this path on your PC:
+
+```text
+C:\Apache24\htdocs\AkwaabaFitAIProject
+```
+
+### 2.1 Install tools (one-time)
+
+| Tool | Version | Download |
+|------|---------|----------|
+| **PHP** | 8.3+ | [windows.php.net](https://windows.php.net/) or XAMPP/Apache stack |
+| **Composer** | latest | [getcomposer.org](https://getcomposer.org) |
+| **Node.js** | 18+ | [nodejs.org](https://nodejs.org) |
+| **MySQL / MariaDB** | 8+ | XAMPP, WAMP, or standalone |
+| **Flutter** | 3.10+ | [flutter.dev](https://flutter.dev) — run `flutter doctor` |
+
+Enable PHP extensions: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo`.
+
+### 2.2 Create the database (Windows)
+
+Open MySQL (phpMyAdmin or CLI):
+
+```sql
+CREATE DATABASE akwaabafit CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 2.3 Backend setup (Windows)
+
+Open **PowerShell**:
+
+```powershell
+cd C:\Apache24\htdocs\AkwaabaFitAIProject\Backend
+
+composer install
+npm install
+copy .env.example .env
+php artisan key:generate
+```
+
+Edit **`Backend\.env`** (minimum for local):
+
+```env
+APP_URL=http://127.0.0.1:8000
+
+DB_DATABASE=akwaabafit
+DB_USERNAME=root
+DB_PASSWORD=YOUR_MYSQL_PASSWORD
+
+QUEUE_CONNECTION=database
+```
+
+Run migrations and seed food data:
+
+```powershell
+php artisan migrate
+php artisan db:seed
+php artisan storage:link
+npm run build
+```
+
+Start the API:
+
+```powershell
+php artisan serve
+```
+
+API base URL for local tools: `http://127.0.0.1:8000/api`
+
+Optional — queue worker (push notifications / jobs):
+
+```powershell
+php artisan queue:work
+```
+
+**Quick test:**
+
+```powershell
+php artisan test
+curl http://127.0.0.1:8000/api/app/version?platform=android^&version=1.0.0
+```
+
+### 2.4 Mobile app (Windows → phone/emulator)
+
+```powershell
+cd C:\Apache24\htdocs\AkwaabaFitAIProject\Mobile
+flutter pub get
+```
+
+| Device | `API_BASE_URL` |
+|--------|----------------|
+| Android emulator | `http://10.0.2.2:8000/api` |
+| Physical phone (same Wi‑Fi as PC) | `http://YOUR-PC-LAN-IP:8000/api` |
+| ngrok (Paystack test from phone) | `https://xxxx.ngrok-free.app/api` |
+
+Run:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api
+```
+
+**Firebase:** copy `google-services.json` (Android) and `GoogleService-Info.plist` (iOS) from your Firebase console into the Mobile project. Without them, the app runs but **push notifications fail**.
+
+### 2.5 Paystack on Windows (testing)
+
+1. Start ngrok: `ngrok http 8000`
+2. Set `APP_URL=https://YOUR-SUBDOMAIN.ngrok-free.app` in `.env`
+3. Paystack dashboard → Webhook URL:
+
+   ```text
+   https://YOUR-SUBDOMAIN.ngrok-free.app/api/webhook/paystack
+   ```
+
+4. Restart `php artisan serve` after `.env` changes.
+
+---
+
+## 3. Part B — ProBook (Ubuntu Server) — first-time OS setup
+
+Skip this section if Ubuntu is **already installed** and you only need the app (go to §4).
+
+### 3.1 Install Ubuntu Server
+
+1. Download **Ubuntu Server 24.04 LTS** from [ubuntu.com/download/server](https://ubuntu.com/download/server).
+2. Boot ProBook from USB → install with **OpenSSH** enabled.
+3. Hostname example: `akwaabafit-server`
+4. User example: `tesnet` (same user as TesNet is OK)
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo reboot
+```
+
+### 3.2 Static IP (if ProBook is on TesNet LAN)
+
+If the ProBook sits on the MikroTik LAN at `192.168.88.2`, you already have Netplan from TesNet — **do not change it** unless you know what you are doing.
+
+Check connectivity:
+
+```bash
+ip a
+ping -c 3 8.8.8.8
+```
+
+### 3.3 Install software (ProBook)
+
+```bash
+sudo apt install -y software-properties-common curl git unzip \
+  apache2 mariadb-server mariadb-client \
+  php8.3 php8.3-cli php8.3-fpm php8.3-mysql php8.3-xml php8.3-mbstring \
+  php8.3-curl php8.3-zip php8.3-bcmath php8.3-intl libapache2-mod-php8.3
+```
+
+**Composer:**
+
+```bash
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+composer --version
+```
+
+**Node.js 20** (Vite assets):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version
+```
+
+**Apache:**
+
+```bash
+sudo a2enmod rewrite headers
+sudo systemctl enable --now apache2 mariadb
+```
+
+### 3.4 Firewall (UFW)
+
+If TesNet already configured UFW, you mainly need **outbound** internet for Cloudflare Tunnel. Optional:
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow from 192.168.88.0/24 to any port 80,443 proto tcp
+sudo ufw enable
+```
+
+Cloudflare Tunnel does **not** require opening inbound port 443 from the internet.
+
+---
+
+## 4. Part C — MariaDB on ProBook
+
+Use a **separate database** from TesNet (`tesnet`).
+
+```bash
+sudo mysql_secure_installation
+sudo mysql
+```
+
+```sql
+CREATE DATABASE akwaabafit CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'akwaabafit'@'localhost' IDENTIFIED BY 'STRONG_DB_PASSWORD_HERE';
+GRANT ALL PRIVILEGES ON akwaabafit.* TO 'akwaabafit'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+Save the password — you will paste it into `.env`.
+
+---
+
+## 5. Part D — Deploy Backend on ProBook
+
+### 5.1 Copy project files
+
+**Option A — Git (recommended):**
+
+```bash
+sudo mkdir -p /var/www
+sudo chown $USER:$USER /var/www
+cd /var/www
+git clone YOUR_GITHUB_REPO_URL AkwaabaFitAIProject
+cd AkwaabaFitAIProject/Backend
+```
+
+**Option B — WinSCP from Windows:**
+
+Copy `C:\Apache24\htdocs\AkwaabaFitAIProject` to `/var/www/AkwaabaFitAIProject` on the ProBook.
+
+**Do not upload:**
+
+- `AI/venv/`
+- `Mobile/build/`
+- `Backend/vendor/` or `node_modules/` (reinstall on server)
+
+### 5.2 Install dependencies
+
+```bash
+cd /var/www/AkwaabaFitAIProject/Backend
+
+composer install --no-dev --optimize-autoloader
+npm install
+npm run build
+```
+
+### 5.3 Environment file
+
+```bash
+cp .env.example .env
+php artisan key:generate
+nano .env
+```
+
+**Production minimum** (replace `YOUR-DOMAIN` and secrets):
+
+```env
+APP_NAME=AkwaabaFit
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://api.YOUR-DOMAIN.com
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=akwaabafit
+DB_USERNAME=akwaabafit
+DB_PASSWORD=STRONG_DB_PASSWORD_HERE
+
+SESSION_DRIVER=database
+SESSION_SECURE_COOKIE=true
+SESSION_ENCRYPT=false
+
+QUEUE_CONNECTION=database
+CACHE_STORE=database
+BROADCAST_CONNECTION=reverb
+
+# Paystack
+PAYSTACK_PUBLIC_KEY=pk_live_or_test_...
+PAYSTACK_SECRET_KEY=sk_live_or_test_...
+PAYSTACK_CURRENCY=GHS
+
+# OpenWeather
+OPENWEATHER_API_KEY=your_key
+
+# Admin dietetics review (production: disable shared key)
+DIETETICS_REVIEW_KEY=long-random-string-for-emergency-unlock
+DIETETICS_ALLOW_SHARED_KEY=false
+
+# Firebase push
+FCM_PROJECT_ID=your-firebase-project-id
+FCM_SERVICE_ACCOUNT_JSON=/var/www/AkwaabaFitAIProject/Backend/storage/app/private/firebase-adminsdk.json
+
+# Reverb (optional realtime — mobile uses polling today)
+REVERB_APP_ID=akwaaba-prod
+REVERB_APP_KEY=change-me-reverb-key
+REVERB_APP_SECRET=change-me-reverb-secret
+REVERB_HOST=api.YOUR-DOMAIN.com
+REVERB_PORT=443
+REVERB_SCHEME=https
+REVERB_SERVER_HOST=127.0.0.1
+REVERB_SERVER_PORT=8080
+
+LOG_CHANNEL=daily
+LOG_LEVEL=warning
+```
+
+Upload Firebase service account JSON:
+
+```bash
+mkdir -p storage/app/private
+# Copy firebase-adminsdk.json via WinSCP to storage/app/private/
+```
+
+### 5.4 Migrate and seed
+
+```bash
+php artisan migrate --force
+php artisan db:seed --force
+php artisan storage:link
+php artisan config:cache
+php artisan route:cache
+```
+
+### 5.5 Permissions
+
+```bash
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R ug+rwx storage bootstrap/cache
+```
+
+### 5.6 Create staff admin (browser login)
+
+```bash
+php artisan tinker
+```
+
+```php
+$user = \App\Models\User::factory()->create([
+    'name' => 'Admin',
+    'email' => 'admin@yourdomain.com',
+    'password' => 'ChangeThisPassword123!',
+    'is_staff_admin' => true,
+]);
+```
+
+Or register via the app, then in MySQL:
+
+```sql
+UPDATE users SET is_staff_admin = 1 WHERE email = 'admin@yourdomain.com';
+```
+
+---
+
+## 6. Part E — Apache virtual host
+
+This site runs **alongside TesNet** on the same Apache — a **second** config file.
+
+```bash
+sudo nano /etc/apache2/sites-available/akwaabafit.conf
+```
+
+```apache
+<VirtualHost *:80>
+    ServerName api.YOUR-DOMAIN.com
+    DocumentRoot /var/www/AkwaabaFitAIProject/Backend/public
+
+    <Directory /var/www/AkwaabaFitAIProject/Backend/public>
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/akwaabafit-error.log
+    CustomLog ${APACHE_LOG_DIR}/akwaabafit-access.log combined
+</VirtualHost>
+```
+
+Enable:
+
+```bash
+sudo a2ensite akwaabafit.conf
+sudo systemctl reload apache2
+```
+
+Test locally (before Cloudflare):
+
+```bash
+curl -sI -H "Host: api.YOUR-DOMAIN.com" http://127.0.0.1/ | head -5
+```
+
+**Leave TesNet’s `tesnet.conf` unchanged** (`ServerName 192.168.88.2`).
+
+---
+
+## 7. Part F — Cloudflare Tunnel (public HTTPS)
+
+The ProBook is usually on a **private LAN** (`192.168.88.2`). Cloudflare Tunnel exposes the API **without** port forwarding on the MikroTik.
+
+### 7.1 Cloudflare dashboard
+
+1. Add your domain to Cloudflare (if not already).
+2. Note your zone — e.g. `YOUR-DOMAIN.com`.
+
+### 7.2 Install cloudflared on ProBook
+
+```bash
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+sudo dpkg -i cloudflared.deb
+cloudflared --version
+```
+
+### 7.3 Login and create tunnel
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create akwaabafit
+```
+
+Note the **tunnel ID** printed (a UUID).
+
+### 7.4 Tunnel config
+
+```bash
+sudo mkdir -p /etc/cloudflared
+sudo nano /etc/cloudflared/config.yml
+```
+
+Replace `TUNNEL_ID` and domain:
+
+```yaml
+tunnel: TUNNEL_ID
+credentials-file: /root/.cloudflared/TUNNEL_ID.json
+
+ingress:
+  - hostname: api.YOUR-DOMAIN.com
+    service: http://127.0.0.1:80
+    originRequest:
+      httpHostHeader: api.YOUR-DOMAIN.com
+  - service: http_status:404
+```
+
+Route DNS (creates CNAME automatically):
+
+```bash
+cloudflared tunnel route dns akwaabafit api.YOUR-DOMAIN.com
+```
+
+### 7.5 Run as a service
+
+```bash
+sudo cloudflared service install
+sudo systemctl enable --now cloudflared
+sudo systemctl status cloudflared
+```
+
+### 7.6 Verify HTTPS
+
+From any browser:
+
+```text
+https://api.YOUR-DOMAIN.com/api/app/version?platform=android&version=1.0.0
+```
+
+You should get JSON. If not, check:
+
+```bash
+sudo journalctl -u cloudflared -n 50
+sudo tail -20 /var/log/apache2/akwaabafit-error.log
+```
+
+---
+
+## 8. Part G — Queue worker and scheduler
+
+The app uses **database queues** for push notifications and background jobs.
+
+### 8.1 Systemd queue service
+
+```bash
+sudo nano /etc/systemd/system/akwaabafit-queue.service
+```
+
+```ini
+[Unit]
+Description=AkwaabaFit queue worker
+After=network.target mariadb.service
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/AkwaabaFitAIProject/Backend
+ExecStart=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now akwaabafit-queue
+sudo systemctl status akwaabafit-queue
+```
+
+### 8.2 Cron (Laravel scheduler)
+
+```bash
+sudo crontab -u www-data -e
+```
+
+Add (keep any existing TesNet lines):
+
+```cron
+* * * * * cd /var/www/AkwaabaFitAIProject/Backend && php artisan schedule:run >> /dev/null 2>&1
+```
+
+### 8.3 Optional — Reverb WebSockets
+
+Mobile chat uses **HTTP polling** today; Reverb is optional.
+
+```bash
+sudo nano /etc/systemd/system/akwaabafit-reverb.service
+```
+
+```ini
+[Unit]
+Description=AkwaabaFit Reverb WebSocket server
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+WorkingDirectory=/var/www/AkwaabaFitAIProject/Backend
+ExecStart=/usr/bin/php artisan reverb:start --host=127.0.0.1 --port=8080
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Only enable if you configure clients to use Reverb.
+
+---
+
+## 9. Part H — Paystack (production)
+
+In [Paystack Dashboard](https://dashboard.paystack.com) → **Settings → Webhooks**:
+
+| Field | Value |
+|-------|--------|
+| **Webhook URL** | `https://api.YOUR-DOMAIN.com/api/webhook/paystack` |
+
+Ensure `.env` has matching live or test keys.
+
+After payment, users return to:
+
+```text
+https://api.YOUR-DOMAIN.com/paystack/return
+```
+
+(`APP_URL` must be `https://api.YOUR-DOMAIN.com`.)
+
+**Test webhook:** Paystack → send test event → check Laravel log:
+
+```bash
+tail -f /var/www/AkwaabaFitAIProject/Backend/storage/logs/laravel.log
+```
+
+---
+
+## 10. Part I — Firebase Cloud Messaging
+
+1. Firebase Console → Project settings → Service accounts → **Generate new private key**.
+2. Save JSON on ProBook:
+
+   ```text
+   /var/www/AkwaabaFitAIProject/Backend/storage/app/private/firebase-adminsdk.json
+   ```
+
+3. Set in `.env`:
+
+   ```env
+   FCM_PROJECT_ID=your-project-id
+   FCM_SERVICE_ACCOUNT_JSON=/var/www/AkwaabaFitAIProject/Backend/storage/app/private/firebase-adminsdk.json
+   ```
+
+4. Mobile: `google-services.json` / iOS plist from the **same** Firebase project.
+
+5. Restart queue worker after changes:
+
+   ```bash
+   sudo systemctl restart akwaabafit-queue
+   ```
+
+---
+
+## 11. Part J — Mobile app → production API
+
+On your Windows PC:
+
+```powershell
+cd C:\Apache24\htdocs\AkwaabaFitAIProject\Mobile
+flutter build apk --dart-define=API_BASE_URL=https://api.YOUR-DOMAIN.com/api
+```
+
+For development against production:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=https://api.YOUR-DOMAIN.com/api
+```
+
+**Never** ship release builds with `127.0.0.1` or ngrok URLs.
+
+---
+
+## 12. Running alongside TesNet on the same ProBook
+
+| | TesNet | AkwaabaFit |
+|---|--------|------------|
+| **Path** | `/var/www/MiniISP-Landing-page/TesNet` | `/var/www/AkwaabaFitAIProject/Backend` |
+| **Database** | `tesnet` | `akwaabafit` |
+| **Apache vhost** | `tesnet.conf` → `192.168.88.2` | `akwaabafit.conf` → `api.YOUR-DOMAIN.com` |
+| **Public URL** | LAN HTTP for students | Cloudflare HTTPS for mobile |
+| **Paystack webhook** | TesNet URL (or ngrok while testing) | `https://api.YOUR-DOMAIN.com/api/webhook/paystack` |
+| **FreeRADIUS** | Yes (TesNet only) | No |
+
+Both can run **ngrok (TesNet dev)** and **Cloudflare (AkwaabaFit)** at the same time — different URLs.
+
+---
+
+## 13. Smoke test checklist
+
+After deploy, verify each row:
+
+| # | Test | Expected |
+|---|------|----------|
+| 1 | `curl https://api.YOUR-DOMAIN.com/api/app/version?platform=android&version=1.0.0` | JSON 200 |
+| 2 | Register user in mobile app | Success |
+| 3 | Login → Home dashboard loads | Weather + stats |
+| 4 | Food scanner logs a meal | History shows entry |
+| 5 | Advice → book session → Paystack | Payment completes |
+| 6 | `https://api.YOUR-DOMAIN.com/admin/login` | Staff admin works |
+| 7 | Paystack test webhook | No error in `laravel.log` |
+| 8 | `sudo systemctl status akwaabafit-queue` | **active (running)** |
+
+---
+
+## 14. Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `500` on all pages | `storage/` permissions; `php artisan config:clear`; read `storage/logs/laravel.log` |
+| `SQLSTATE` connection error | Check `.env` `DB_*`; database exists; user granted |
+| `Vite manifest not found` | Run `npm install && npm run build` on server |
+| Mobile “network error” | Use HTTPS production URL, not LAN IP, on physical phones |
+| Paystack paid, no session update | Webhook URL must be HTTPS; check `laravel.log` and Paystack webhook logs |
+| Push not working | FCM JSON path; queue worker running |
+| Cloudflare 502 | Apache down; wrong `httpHostHeader`; check `cloudflared` logs |
+| Images 404 | `php artisan storage:link` |
+| After `.env` change | `php artisan config:clear` and restart queue |
+
+**Useful commands (ProBook):**
+
+```bash
+sudo systemctl status apache2 mariadb akwaabafit-queue cloudflared
+sudo tail -f /var/www/AkwaabaFitAIProject/Backend/storage/logs/laravel.log
+php artisan test
+```
+
+---
+
+## 15. Updating the server after code changes
+
+```bash
+cd /var/www/AkwaabaFitAIProject/Backend
+git pull
+composer install --no-dev --optimize-autoloader
+npm ci && npm run build
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+sudo systemctl restart akwaabafit-queue
+sudo systemctl reload apache2
+```
+
+---
+
+## 16. Related docs
+
+- [`README.md`](README.md) — features, API overview, environment variables  
+- TesNet on same machine: [`../TesNet/installation`](../TesNet/installation) (if sibling folder) or your TesNet repo `installation` file  
+
+---
+
+## Quick reference — URLs
+
+| Purpose | URL |
+|---------|-----|
+| Public API base | `https://api.YOUR-DOMAIN.com/api` |
+| Paystack webhook | `https://api.YOUR-DOMAIN.com/api/webhook/paystack` |
+| Paystack return page | `https://api.YOUR-DOMAIN.com/paystack/return` |
+| Staff admin | `https://api.YOUR-DOMAIN.com/admin/login` |
+| Dietitian applications | `https://api.YOUR-DOMAIN.com/admin/dietetics/applications` |
+| Advisor web login | `https://api.YOUR-DOMAIN.com/advisor/login` |
+
+Replace `YOUR-DOMAIN.com` with your real domain everywhere before going live.
