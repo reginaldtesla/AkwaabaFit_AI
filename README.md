@@ -1,39 +1,39 @@
 # AkwaabaFit AI
 
-Culturally adapted fitness and nutrition app for Ghanaians. Users track activity and meals, scan local dishes with on-device AI, and book paid nutrition advice sessions with verified dietitians.
+Culturally adapted fitness and nutrition app for Ghanaians. Users track activity and meals, scan local dishes with cloud-assisted AI, and manage health goals with offline-first sync.
 
-**Stack:** Laravel 12 API · Flutter mobile app · YOLOv8 food model training pipeline
-
-> **Production install (ProBook + Cloudflare):** start with **[`installation`](installation)** — step-by-step from zero (Windows dev, Ubuntu deploy, Paystack, mobile API URL).
+**Stack:** Laravel 12 API · Flutter mobile app
 
 ## What the app is supposed to do
 
-AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and get professional nutrition guidance** in one mobile app. It is built around local food and everyday life—not generic Western meal plans.
+AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and monitor wellness** in one mobile app. It is built around local food and everyday life—not generic Western meal plans.
 
 ### For everyday users
 
 1. **Sign up and set a health profile** — Goals, body metrics, calorie and macro targets, and preferences so the dashboard can personalize summaries.
 2. **See daily wellness at a glance (Home)** — Calories eaten vs burned, step progress, weather, and short insights to stay on track.
 3. **Track movement (Stride)** — Count steps with the phone, sync activity in the background, view today’s effort, and compare on a daily leaderboard.
-4. **Log meals quickly (Food scanner)** — Photograph Ghanaian dishes (jollof, banku, waakye, etc.); the app detects the food on the device and logs calories and macros to **Nutrition history**. Works offline first, then syncs when online.
+4. **Log meals quickly (Food scanner)** — Photograph Ghanaian dishes (jollof, banku, waakye, etc.); the server identifies the food using a Ghana-focused model with AI fallback, then logs calories and macros to **Nutrition history**. **Requires internet** for the scan step; meal history and sync work offline-first.
 5. **Review eating over time (History)** — Browse meals by day with safety labels and protein / carbs / fat where available.
-6. **Get expert help (Advice)** — Choose a listed dietitian, pay via Paystack, book **now** or for a **scheduled time**, then chat during the live session. Reminders fire before the session starts; chat is only open in the paid live window.
+6. **Stay safe outdoors (Safety)** — Weather and air-quality context with practical tips for walking and outdoor activity.
 7. **Manage account (Profile)** — Update details, photo, goals, and sync data when back on the network.
 
 ### For dietitians / nutrition advisors
 
-- **Apply in the app** — Submit Ghana Card, certificates, photo, and CV for admin review.
-- **After approval** — Appear in the public list with admin-set rating and hourly rate; receive paid consultations and reply in chat (app or web advisor login).
+- **Apply via API / web portal** — Submit Ghana Card, certificates, photo, and CV for admin review (backend + admin UI).
+- **After approval** — Listed in the API with admin-set rating and hourly rate; advisors can reply in chat via the **web advisor portal** (not in the mobile app today).
 
 ### For administrators
 
 - **Review applications** — Approve or reject dietitian sign-ups and set listing rating and price.
-- **Oversee advice** — Access admin tools for application documents and consultation oversight.
+- **Oversee advice** — Access admin tools for application documents and consultation chat oversight.
 
 ### What the app is not trying to do (current scope)
 
 - It does **not** replace a doctor for emergencies or clinical diagnosis.
 - Food scanner macros are **reference values per dish type**, not a lab analysis of the exact portion on the plate.
+- **No in-app payments** — Paystack and checkout flows have been removed.
+- **No telehealth tab in the mobile app** — consultation chat remains on the backend for admin/advisor web use only.
 - There is no social feed, wearable-only mode, or full AI-generated workout library in this version.
 
 ### Main user journeys (summary)
@@ -43,17 +43,15 @@ AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and
 | Know if I’m on track today | **Home** |
 | Record what I ate | **Scanner** → **History** |
 | Walk more and see steps | **Stride** |
-| Talk to a dietitian | **Advice** → pay → **chat** |
+| Check weather / outdoor safety | **Safety** |
 | Change my goals or photo | **Profile** |
-| Become a listed dietitian | **Profile** / **Advice** → **Apply** |
 
 ## Project structure
 
-The repository contains three main parts:
+The repository contains two main parts:
 
-- **Backend** — Laravel API, admin web UI, Paystack webhooks, Reverb configuration
+- **Backend** — Laravel API, admin web UI, hybrid food-scan service, Reverb configuration
 - **Mobile** — Flutter app for iOS and Android
-- **AI** — Dataset merge, YOLOv8 training, ONNX export for the scanner
 
 ## What is implemented
 
@@ -62,18 +60,16 @@ The repository contains three main parts:
 | Area | Details |
 |------|---------|
 | **Auth** | Register, login, logout, forgot / reset password, health profile onboarding |
-| **Home dashboard** | Calories in/out, macro targets, weather (OpenWeather), AI insight text, quick actions |
+| **Home dashboard** | Calories in/out, macro targets, weather (OpenWeather), wellness insight, quick actions |
 | **Stride (fitness)** | Step tracking (pedometer), foreground/background step sync, hourly activity logs, daily leaderboard |
-| **Food scanner** | On-device **YOLOv8 ONNX**; 22 Ghanaian / common dish classes; camera + gallery; confidence %; auto-log to nutrition history |
+| **Food scanner** | Full-screen camera UI + **SCAN MEAL** FAB; uploads photo to `POST /api/nutrition/scan`; macros from bundled defaults → SQLite cache → server lookup |
 | **Nutrition** | Meal history by day, macro row (P/C/F), offline SQLite cache + server sync when online |
-| **Nutrition advice** | Browse listed dietitians (photo, rating, hourly rate), book **Ask now** or **scheduled** session, Paystack checkout |
-| **Advice chat** | Client + advisor chat with polling; session phases (`waiting` → `live` → `ended`); chat blocked until scheduled start; local reminders (−2h, −30m, at start) + inbox notifications |
-| **Dietitian application** | In-app form: Ghana card, certificate, photo, CV, all required fields; camera/gallery for photo; status from API |
+| **Safety** | Weather / air-quality hub with environment-based tips |
 | **Profile** | Edit profile, avatar upload, goals, calorie/macro targets, sync controls |
-| **Offline** | SQLite for meals, steps, nutrition food catalog cache, outbox sync |
-| **Push** | Firebase Cloud Messaging device token registration |
+| **Offline** | SQLite for meals, steps, nutrition food catalog cache, outbox sync — **scanner needs network** |
+| **Notifications** | Local notifications for step goals and reminders (`flutter_local_notifications`) |
 
-**Main tabs:** Home · History (nutrition) · Stride · Advice · Profile
+**Main tabs:** Home · History (nutrition) · Stride · Safety · Profile
 
 ### Backend API (Laravel + Sanctum)
 
@@ -83,15 +79,14 @@ The repository contains three main parts:
 | **Profile** | Show, update, avatar upload |
 | **Dashboard** | Aggregates steps, meals, targets, weather |
 | **Fitness** | Step sync, hourly activity, today summary, daily leaderboard |
-| **Nutrition** | Log meal, history, per-class lookup, full food catalog |
-| **Consultations** | Book, Paystack initiate/verify, list my sessions, messaging + delta poll, typing |
-| **Payments** | Paystack webhook (signed) |
-| **Dietitians** | Public listing for app; application submit + status |
-| **Advisor** | Protected routes for in-app advisor role |
-| **Devices** | FCM token register / unregister |
+| **Nutrition** | Log meal, **scan** (hybrid HF + Gemini), history, per-class lookup, full food catalog |
+| **Consultations** | Book (no payment), list my sessions, messaging + delta poll, typing — used by web advisor/admin flows |
+| **Dietitians** | Public listing API; application submit + status |
+| **Advisor** | Protected routes for in-app advisor role (web portal) |
+| **Devices** | FCM token register / unregister (optional; mobile app does not use Firebase today) |
 | **Broadcasting** | Client config for Reverb / Pusher-compatible WebSockets |
 
-**Scheduled sessions:** Live window starts at scheduled time, ends at session expiry (paid + 2 hours). Messages are blocked with **402** while the session is still waiting.
+**Scheduled sessions:** Live window starts at scheduled time, ends at session expiry (booking time + 2 hours for “ask now”). Messages are blocked with **402** while the session is still waiting.
 
 ### Admin & web
 
@@ -102,48 +97,54 @@ The repository contains three main parts:
 | `/admin/dietetics/applications` | Review pending dietitian applications; approve with **rating** + **listed hourly rate**; reject; download documents |
 | `/admin/advice` | Staff view of advice chats |
 | `/advisor/login` | Web login for nutrition advisors |
-| `/paystack/return` | Payment return page after Paystack redirect |
 
-Approved applications feed the mobile dietitian list (photo, rating, hourly rate from admin fields).
+Approved applications feed the public dietitian list API (photo, rating, hourly rate from admin fields).
 
-### AI / food recognition
+### Food recognition (hybrid cloud scan)
 
-| Item | Detail |
+| Step | Detail |
 |------|--------|
-| **Training** | YOLOv8 on merged Ghanaian food datasets |
-| **Mobile model** | ONNX (opset 12) bundled in the app |
-| **Classes (22)** | banku, beans, bread, burger, chicken, egg-pepper, fufu, hausa-koko, jollof, kelewele, kenkey, kokonte, koose, meat, nkate-cake, pasta, pizza, plantain, rice, salad, waakye, yam |
-| **Nutrition lookup** | Hybrid: bundled defaults → local cache → server refresh; generic fallback if class missing |
+| **1. Ghana model** | Hugging Face `Kennethdot/convnext_finetuned_ghanaian_food` on the uploaded image |
+| **2. Gemini fallback** | If confidence is low, **Gemini 2.5 Flash** suggests dish name + macros |
+| **Mobile** | Camera capture → multipart upload → display result → **LOG MEAL** |
+| **Nutrition lookup** | Hybrid: bundled defaults → local SQLite cache → server refresh; generic fallback if class missing |
 | **Macros on scan** | Reference values per food class (not measured from plate size); detection is visual only |
+
+Configure in backend `.env`: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY` (see `.env.example`).
 
 ### Integrations
 
-- **Paystack** — GHS payments for nutrition advice
-- **Firebase FCM** — push notifications
-- **OpenWeather** — dashboard weather
-- **Laravel Reverb** — WebSocket stack (optional; mobile chat uses polling + FCM)
+- **Hugging Face Inference** — primary Ghana food classifier for scans
+- **Google Gemini** — fallback when the classifier is uncertain
+- **OpenWeather** — dashboard weather and safety context
+- **Laravel Reverb** — WebSocket stack (optional; mobile uses polling for any future chat features)
 
 ## Architecture (high level)
 
 ```mermaid
 flowchart LR
   subgraph mobile [Flutter App]
-    ONNX[ONNX Food Detector]
-    SQLite[(SQLite offline DB)]
-    UI[Screens]
-    UI --> ONNX
-    UI --> SQLite
+  Camera[Camera Scanner]
+  SQLite[(SQLite offline DB)]
+  UI[Screens]
+  UI --> Camera
+  UI --> SQLite
   end
   subgraph api [Laravel API]
-    Sanctum[Sanctum Auth]
-    DB[(MySQL)]
-    Storage[Public Storage]
-    Paystack[Paystack Webhook]
+  Sanctum[Sanctum Auth]
+  Scan[FoodScanService]
+  DB[(MySQL)]
+  Storage[Public Storage]
+  end
+  subgraph cloud [External APIs]
+  HF[Hugging Face]
+  Gemini[Gemini Flash]
   end
   mobile -->|HTTPS JSON| api
-  ONNX -->|class name| SQLite
+  Camera -->|image upload| Scan
+  Scan --> HF
+  Scan --> Gemini
   SQLite -->|sync when online| api
-  Paystack --> api
 ```
 
 ## Prerequisites
@@ -160,10 +161,6 @@ flowchart LR
 - Flutter SDK 3.10+
 - Android Studio / Xcode (for device builds)
 
-### Optional (AI training)
-
-- Python 3.10+, Ultralytics YOLOv8
-
 ## Installation on a new computer
 
 Use this section if you received the project on a **USB drive** (or zip) instead of cloning from GitHub. You still install all dependencies on the new machine; copying source code is not enough by itself.
@@ -172,8 +169,8 @@ Use this section if you received the project on a **USB drive** (or zip) instead
 
 **The person sending the project should copy:**
 
-- The full project folder (backend, mobile, and AI folders).
-- A **separate, secure copy** of secrets (do not post these in chat): backend environment file, Firebase Android config, Firebase iOS config, and FCM service account JSON if push is needed.
+- The full project folder (backend and mobile).
+- A **separate, secure copy** of secrets (do not post these in chat): backend `.env` with database credentials and API keys.
 - Optional: a MySQL database export if you want the same users/meals on the new PC (otherwise you start with an empty database).
 
 **Usually missing or unsafe to rely on after USB copy** (reinstall or recreate on the new PC):
@@ -207,18 +204,14 @@ Install these **before** opening the project.
 
 **Windows tips:** Add PHP, Composer, Node, and Flutter to your system **PATH**. Use **PowerShell** or **Command Prompt** for the commands below.
 
-**Optional (only to retrain the food model):** Python 3.10+, then `pip install ultralytics` inside a virtual environment in the AI folder.
-
 ---
 
 ### Step 2 — Copy the project from USB
 
 1. Plug in the USB drive and copy the whole **AkwaabaFit** project folder to a local disk (e.g. `Documents` or `htdocs`).
-2. Confirm you see three main parts: **backend** (Laravel), **mobile** (Flutter), and **AI** (training scripts).
+2. Confirm you see **Backend** (Laravel) and **Mobile** (Flutter).
 3. Place the secret files the sender gave you:
    - Backend: environment file in the Laravel root (same place as `.env.example`).
-   - Mobile Android: Firebase config file in the Android app module.
-   - Mobile iOS: Firebase plist in the iOS runner (if building for iPhone).
 
 If you do **not** have a backend environment file, create one by copying `.env.example` to `.env` and filling in database name, user, password, and API keys (see [Environment variables](#environment-variables-backend)).
 
@@ -226,7 +219,7 @@ If you do **not** have a backend environment file, create one by copying `.env.e
 
 ### Step 3 — Backend (Laravel API)
 
-Open a terminal in the **backend (Laravel) folder** and run **in order**:
+Open a terminal in the **Backend** folder and run **in order**:
 
 ```bash
 composer install
@@ -251,7 +244,7 @@ Edit `.env` on the new machine (minimum):
 
 - `APP_URL` — URL you will use to reach the API (see below).
 - `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — match the MySQL database you created.
-- Optional but recommended for full features: Paystack, FCM, OpenWeather, `DIETETICS_REVIEW_KEY`.
+- Optional but recommended: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `DIETETICS_REVIEW_KEY`.
 
 Create tables and seed food nutrition data:
 
@@ -261,13 +254,13 @@ php artisan db:seed
 php artisan storage:link
 ```
 
-Start the API:
+Start the API (bind to all interfaces so phones/emulators can reach it):
 
 ```bash
-php artisan serve
+php artisan serve --host=0.0.0.0 --port=8080
 ```
 
-By default the API is at `http://127.0.0.1:8000`. JSON endpoints are under `/api` (e.g. `http://127.0.0.1:8000/api/login`).
+JSON endpoints are under `/api` (e.g. `http://127.0.0.1:8080/api/login`).
 
 **If the sender gave you a database dump:** create the empty database first, import the dump with MySQL tools, then run `php artisan migrate` only if needed for newer migrations.
 
@@ -278,21 +271,17 @@ php artisan queue:work
 php artisan reverb:start
 ```
 
-Use the queue worker if push notifications or queued jobs should run locally.
-
 **Quick check:**
 
 ```bash
 php artisan test
 ```
 
-All tests should pass if PHP extensions and SQLite/MySQL test config are OK.
-
 ---
 
 ### Step 4 — Mobile (Flutter app)
 
-Open a **second** terminal in the **mobile (Flutter) folder**:
+Open a **second** terminal in the **Mobile** folder:
 
 ```bash
 flutter doctor
@@ -303,21 +292,21 @@ flutter pub get
 
 | Scenario | `API_BASE_URL` example |
 |----------|-------------------------|
-| Android **emulator** on same PC as API | `http://10.0.2.2:8000/api` |
-| **Physical phone** on same Wi‑Fi as PC | `http://YOUR-PC-LAN-IP:8000/api` (find IP with `ipconfig` on Windows) |
+| Android **emulator** on same PC as API | `http://10.0.2.2:8080/api` |
+| **Physical phone** on same Wi‑Fi as PC | `http://YOUR-PC-LAN-IP:8080/api` (find IP with `ipconfig` on Windows) |
 | **Tunnel** (ngrok, etc.) | `https://YOUR-SUBDOMAIN.ngrok-free.dev/api` |
 
 Run the app (replace with your URL):
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api
 ```
 
-For a physical device on Wi‑Fi, allow port **8000** through Windows Firewall when prompted.
+For a physical device on Wi‑Fi, allow the API port through Windows Firewall when prompted. **MySQL must be running** on the host machine or login and other API calls will fail.
 
 The app sends an ngrok skip header for free-tier tunnels and can rewrite localhost storage URLs to match your configured API host.
 
-**Firebase:** Without Android/iOS Firebase config from the sender, the app may still run but **push notifications will not work** until you add your own Firebase project files.
+Default API URL in code (when no `--dart-define` is passed) is set in `Mobile/lib/shared/config/app_config.dart` — change it to your PC’s LAN IP for physical-device testing.
 
 **If build fails after USB copy:**
 
@@ -329,65 +318,52 @@ flutter run --dart-define=API_BASE_URL=...
 
 ---
 
-### Step 5 — Optional: AI training environment
+### Step 5 — Smoke test on the new PC
 
-Only needed if you will **retrain** the food model, not to run the mobile scanner (the ONNX model is already bundled in the app).
-
-1. Open a terminal in the **AI** folder.
-2. Create a virtual environment and install dependencies (example):
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-pip install ultralytics onnx
-```
-
-3. Run training scripts as documented in that folder. Datasets can be very large; they may have been omitted from the USB copy on purpose.
-
----
-
-### Step 6 — Smoke test on the new PC
-
-1. Backend running (`php artisan serve`).
+1. Backend running (`php artisan serve --host=0.0.0.0 --port=8080`) and MySQL started.
 2. Register a new user in the app or use an imported database account.
-3. Log a meal or run the **food scanner** (camera permission).
-4. Open **Advice** and confirm dietitians load (requires seeded/approved data or admin approval flow).
-5. Open admin in a browser: `http://127.0.0.1:8000/admin/login` (staff user) or dietetics unlock URL with review key.
+3. Run the **food scanner** (camera + network required); confirm a dish name and **LOG MEAL**.
+4. Log steps on **Stride** and confirm **Home** updates after sync.
+5. Open admin in a browser: `http://127.0.0.1:8080/admin/login` (staff user) or dietetics unlock URL with review key.
 
 ---
 
-### Step 7 — Common USB / new-PC issues
+### Step 6 — Common USB / new-PC issues
 
 | Problem | Fix |
 |---------|-----|
 | `composer` or `php` not found | Install PHP/Composer and add to PATH; restart the terminal |
-| `class not found` / autoload errors | Run `composer install` in the backend folder |
-| `Vite manifest not found` | Run `npm install` and `npm run build` in the backend folder |
-| `SQLSTATE` / database connection | Check `.env` DB_* values; create the MySQL database |
+| `class not found` / autoload errors | Run `composer install` in the Backend folder |
+| `Vite manifest not found` | Run `npm install` and `npm run build` in the Backend folder |
+| `SQLSTATE` / database connection | Check `.env` DB_* values; create the MySQL database; start MySQL service |
+| Login shows “Server Error” | Often MySQL stopped — start the `MySQL80` (or equivalent) service |
 | `No application encryption key` | Run `php artisan key:generate` |
 | App shows network error on phone | Use LAN IP or tunnel URL, not `127.0.0.1`, on a physical device |
 | Storage images 404 | Run `php artisan storage:link` |
 | Flutter Gradle errors | Run `flutter doctor`; accept Android licenses |
-| Paystack / FCM not working | Keys in `.env` are machine-specific; copy from sender or use test keys |
+| Food scan fails | Set `HUGGINGFACE_API_TOKEN` and/or `GEMINI_API_KEY` in backend `.env` |
+| Leaderboard / API timeout | Confirm app `API_BASE_URL` port matches `php artisan serve` (e.g. **8080**) |
 
 ---
 
 ### Installing from GitHub instead
 
-If you use Git later: clone the repository, then follow **Step 1** (tools), **Step 3** (backend), and **Step 4** (mobile) above. You still create your own `.env` and Firebase files; they are not in the repo.
+If you use Git later: clone the repository, then follow **Step 1** (tools), **Step 3** (backend), and **Step 4** (mobile) above. You still create your own `.env`; it is not in the repo.
 
 ## Environment variables (Backend)
 
 | Variable | Purpose |
 |----------|---------|
-| `APP_URL` | Public URL (storage links, Paystack callback) |
-| `PAYSTACK_PUBLIC_KEY` / `PAYSTACK_SECRET_KEY` | Payments |
-| `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_JSON` | Push |
+| `APP_URL` | Public URL (storage links, signed portal URLs) |
+| `HUGGINGFACE_API_TOKEN` | Ghana food model inference |
+| `FOOD_SCAN_HF_MODEL` / `FOOD_SCAN_HF_THRESHOLD` | Classifier model and confidence cutoff |
+| `GEMINI_API_KEY` / `FOOD_SCAN_GEMINI_MODEL` | Fallback dish identification |
 | `OPENWEATHER_API_KEY` | Weather |
 | `DIETETICS_REVIEW_KEY` | Unlock admin application review without staff account |
 | `DIETETICS_ALLOW_SHARED_KEY` | Set `false` in production |
 | `REVERB_*` | WebSocket server |
 | `QUEUE_CONNECTION` | Use `database` and run a queue worker in production |
+| `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_JSON` | Optional push (not used by current mobile build) |
 
 ## Testing
 
@@ -397,7 +373,7 @@ If you use Git later: clone the repository, then follow **Step 1** (tools), **St
 php artisan test
 ```
 
-Feature tests cover auth, profile, dashboard, steps, nutrition history, food nutrition lookup, consultations, scheduled sessions, messaging, dietitian applications, and Paystack webhook handling.
+Feature tests cover auth, profile, dashboard, steps, nutrition history, food nutrition lookup, consultations, scheduled sessions, messaging, and dietitian applications.
 
 ### Mobile
 
@@ -435,21 +411,32 @@ The app is suitable for **beta / pilot** deployment when:
 
 1. API is on **stable HTTPS** (not a dev ngrok URL in release builds).
 2. Production environment: `APP_DEBUG=false`, migrations applied, storage linked.
-3. Paystack live keys + webhook URL configured.
-4. FCM and mail configured for push and password reset.
+3. Food-scan API keys (`HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`) and OpenWeather configured.
+4. Mail configured for password reset.
 5. Android **release signing** and a proper application ID are set before store submission.
 
-See the feature list above for scope; items like wearable sync, community challenges, and full AI workout plans are **not** implemented yet.
+See the feature list above for scope; items like in-app telehealth, payments, wearable sync, community challenges, and full AI workout plans are **not** in the current mobile app.
 
 ## API reference
 
 JSON API routes live under `/api`. Admin and advisor pages are served as web routes on the same host.
 
+Key mobile endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/nutrition/scan` | Upload meal photo; hybrid food detection |
+| `POST` | `/api/nutrition/log` | Log a meal (also used after scan) |
+| `GET` | `/api/nutrition/history` | Meal history |
+| `POST` | `/api/steps/sync` | Sync step counts |
+| `GET` | `/api/leaderboard/daily` | Daily step leaderboard |
+
 ## Roadmap / not yet built
 
 - Public App Store / Play Store release packaging (signing, privacy policy pages)
 - Portion-size estimation from scan images
-- Native Reverb client on mobile (polling used today)
+- Bring consultation / dietitian chat back into the mobile app (backend already supports it)
+- Native Reverb client on mobile (polling used today where chat exists)
 - Rate limiting on login/register
 - Object storage (S3) for multi-server uploads
 - Expanded food model classes and nutrition database
@@ -471,8 +458,8 @@ Final year group project:
 
 ## Acknowledgments
 
-- Laravel, Flutter, Ultralytics YOLOv8, ONNX Runtime
-- Ghanaian food dataset contributors and open datasets used for training
+- Laravel, Flutter, Hugging Face, Google Gemini
+- Ghanaian food dataset contributors and open datasets used for model training
 
 ## Contact
 
