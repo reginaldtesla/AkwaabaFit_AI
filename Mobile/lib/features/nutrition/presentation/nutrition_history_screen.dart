@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile/features/ai_scanner/presentation/ai_scanner_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
+import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
+import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
@@ -310,55 +310,7 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 8, right: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Text(
-                'SCAN MEAL',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: dashboardGreen,
-                ),
-              ),
-            ),
-            FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiScannerScreen()),
-                );
-              },
-              backgroundColor: dashboardGreen,
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: const Icon(
-                Icons.photo_camera,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-          ],
-        ),
-      ),
+      floatingActionButton: ScanMealFab(color: dashboardGreen),
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.history,
         onTabSelected: (tab) => _handleTab(context, tab),
@@ -382,7 +334,7 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
+          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
         );
         return;
       case AppTab.profile:
@@ -776,7 +728,7 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
                             Chip(
                               label: Text(
                                 meal.source == 'scan'
-                                    ? 'Scanned'
+                                    ? 'Logged'
                                     : _capitalizeLabel(meal.source!),
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 12,
@@ -854,7 +806,7 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
                       if (iron != null || folate != null) ...[
                         const SizedBox(height: 20),
                         Text(
-                          'Micronutrients (scan)',
+                          'Micronutrients',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,

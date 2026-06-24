@@ -7,13 +7,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
-import 'package:mobile/features/ai_scanner/presentation/ai_scanner_screen.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
+import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
+import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
 import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
 import 'package:mobile/shared/fitness/step_goal_achievement_notifier.dart';
@@ -906,55 +906,7 @@ class DashboardScreen extends ConsumerWidget {
       ),
 
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 20), // Lift above bottom nav
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 8, right: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Text(
-                'SCAN MEAL',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: primary,
-                ),
-              ),
-            ),
-            FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiScannerScreen()),
-                );
-              },
-              backgroundColor: primary,
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: const Icon(
-                Icons.photo_camera,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-          ],
-        ),
-      ),
+      floatingActionButton: const ScanMealFab(),
 
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.home,
@@ -979,7 +931,7 @@ class DashboardScreen extends ConsumerWidget {
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
+          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
         );
         return;
       case AppTab.profile:
@@ -1803,21 +1755,17 @@ class DashboardScreen extends ConsumerWidget {
 
   Widget _buildAIInsightCard(BuildContext context, DashboardData data) {
     final msg = _buildPersonalizedInsight(data);
-    return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
-        );
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
+    const insightBg = slate900;
+    const insightIconBg = Color(0xFF334155);
+
+    return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: primary,
+        color: insightBg,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: primary.withOpacity(0.3),
+            color: insightBg.withValues(alpha: 0.28),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -1829,7 +1777,7 @@ class DashboardScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: insightIconBg,
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(Icons.psychology, color: Colors.white, size: 24),
@@ -1840,7 +1788,7 @@ class DashboardScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'AI Wellness Insight',
+                  'Wellness Insight',
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -1853,7 +1801,7 @@ class DashboardScreen extends ConsumerWidget {
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha: 0.9),
                     height: 1.5,
                   ),
                 ),
@@ -1861,7 +1809,6 @@ class DashboardScreen extends ConsumerWidget {
             ),
           ),
         ],
-      ),
       ),
     );
   }

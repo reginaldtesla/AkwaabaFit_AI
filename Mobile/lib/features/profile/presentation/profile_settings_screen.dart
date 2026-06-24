@@ -9,9 +9,6 @@ import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
-import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
-import 'package:mobile/features/telehealth/presentation/advisor_advice_inbox_screen.dart';
-import 'package:mobile/features/telehealth/presentation/dietitian_application_screen.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/auth/presentation/splash_screen.dart';
 import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
@@ -21,9 +18,6 @@ import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
-import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS
@@ -96,33 +90,6 @@ final genderProvider = FutureProvider<String?>((ref) async {
   final v = current?['gender'];
   final s = (v ?? '').toString().trim();
   return s.isEmpty ? null : s;
-});
-
-final isNutritionAdvisorProvider = FutureProvider<bool>((ref) async {
-  const storage = FlutterSecureStorage();
-  final token = await storage.read(key: 'sanctum_token');
-  if (token == null || token.isEmpty) return false;
-
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    ),
-  );
-
-  try {
-    final resp = await dio.get('/user');
-    final raw = resp.data;
-    final map = (raw is Map) ? raw.map((k, v) => MapEntry(k.toString(), v)) : const <String, dynamic>{};
-    return map['is_nutrition_advisor'] == true || map['isNutritionAdvisor'] == true;
-  } catch (_) {
-    return false;
-  }
 });
 
 class ProfileNotifier extends StateNotifier<AsyncValue<UserProfile>> {
@@ -263,7 +230,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
+          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
         );
         return;
       case AppTab.profile:
@@ -501,9 +468,6 @@ class ProfileSettingsScreen extends ConsumerWidget {
       error: (_, __) => 'Tap to set your calorie goal',
     );
 
-    final isAdvisorAsync = ref.watch(isNutritionAdvisorProvider);
-    final isAdvisor = isAdvisorAsync.valueOrNull == true;
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -533,95 +497,9 @@ class ProfileSettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          Container(
-            decoration: _cardDecoration(),
-            child: Column(
-              children: [
-                if (isAdvisor)
-                  _buildListTile(
-                    icon: Icons.support_agent_outlined,
-                    title: 'Advisor inbox',
-                    subtitle: 'Reply to your assigned Nutrition Advice chats.',
-                    trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
-                    showBorder: true,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const AdvisorAdviceInboxScreen()),
-                      );
-                    },
-                  ),
-                _buildListTile(
-                  icon: Icons.badge_outlined,
-                  title: 'Apply as Nutrition Professional',
-                  subtitle:
-                      'Complete application with photo, Ghana card, certificates, CV, and contact details.',
-                  trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
-                  showBorder: false,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const DietitianApplicationScreen()),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  Future<void> _openDieteticsDoctorPortal(BuildContext context) async {
-    const storage = FlutterSecureStorage();
-    final token = await storage.read(key: 'sanctum_token');
-    if (token == null || token.isEmpty) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login again to continue.')),
-      );
-      return;
-    }
-
-    final dio = Dio(
-      BaseOptions(
-        baseUrl: AppConfig.apiBaseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ),
-    );
-
-    try {
-      final resp = await dio.post('/dietetics/apply/link');
-      final raw = resp.data;
-      final map = (raw is Map)
-          ? raw.map((k, v) => MapEntry(k.toString(), v))
-          : const <String, dynamic>{};
-      final url = (map['url'] ??
-              ((map['data'] is Map)
-                  ? (map['data'] as Map)
-                      .map((k, v) => MapEntry(k.toString(), v))['url']
-                  : null))
-          ?.toString();
-      if (url == null || url.isEmpty) throw Exception('Missing url');
-
-      final uri = Uri.parse(url);
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the application page.')),
-        );
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to open portal. ${e.toString()}')),
-      );
-    }
   }
 
   Future<void> _editDailyCalorieGoal(BuildContext context, WidgetRef ref) async {

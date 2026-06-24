@@ -6,14 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
-import 'package:mobile/features/ai_scanner/presentation/ai_scanner_screen.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
+import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/config/app_config.dart';
@@ -746,56 +745,6 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
           },
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 8, right: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Text(
-                'SCAN MEAL',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: ActivityTrackingScreen.dashboardGreen,
-                ),
-              ),
-            ),
-            FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiScannerScreen()),
-                );
-              },
-              backgroundColor: ActivityTrackingScreen.dashboardGreen,
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: const Icon(
-                Icons.photo_camera,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-          ],
-        ),
-      ),
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.stats,
         onTabSelected: (tab) => _handleTab(context, tab),
@@ -819,7 +768,7 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
+          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
         );
         return;
       case AppTab.profile:

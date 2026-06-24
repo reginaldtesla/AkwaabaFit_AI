@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile/features/ai_scanner/presentation/ai_scanner_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/features/safety/data/safety_environment_advice.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
@@ -256,56 +254,6 @@ class HealthSafetyHubScreen extends ConsumerWidget {
           child: _buildContent(context, ref, data),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 8, right: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Text(
-                'SCAN MEAL',
-                style: GoogleFonts.inter(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: primary,
-                ),
-              ),
-            ),
-            FloatingActionButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiScannerScreen()),
-                );
-              },
-              backgroundColor: primary,
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: const Icon(
-                Icons.photo_camera,
-                color: Colors.white,
-                size: 28,
-              ),
-            ),
-          ],
-        ),
-      ),
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.safety,
         onTabSelected: (tab) => _handleTab(context, tab),
@@ -366,8 +314,6 @@ class HealthSafetyHubScreen extends ConsumerWidget {
       child: Column(
         children: [
           _buildWelcomeCard(data.userName),
-          const SizedBox(height: 16),
-          _buildTeleDieteticsButton(context),
           const SizedBox(height: 24),
           _buildEnvironmentCard(ref, data),
           const SizedBox(height: 24),
@@ -439,42 +385,6 @@ class HealthSafetyHubScreen extends ConsumerWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTeleDieteticsButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
-          );
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-          elevation: 6,
-          shadowColor: primary.withOpacity(0.25),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.support_agent),
-            const SizedBox(width: 10),
-            Text(
-              'Tele‑Dietetics',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

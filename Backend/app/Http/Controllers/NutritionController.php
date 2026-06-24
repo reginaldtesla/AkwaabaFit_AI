@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\FoodNutritionItem;
 use App\Models\MealLog;
+use App\Services\FoodScanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Throwable;
 
 class NutritionController extends Controller
 {
@@ -107,6 +109,39 @@ class NutritionController extends Controller
             'source' => 'server',
             'updatedAt' => now()->toIso8601String(),
             'foods' => $items,
+        ]);
+    }
+
+    public function scan(Request $request, FoodScanService $scanner): JsonResponse
+    {
+        $request->validate([
+            'image' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
+        ]);
+
+        try {
+            $result = $scanner->scan($request->file('image'));
+        } catch (Throwable $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+            ], 503);
+        }
+
+        if ($result['detections'] === []) {
+            return response()->json([
+                'status' => 'success',
+                'provider' => $result['provider'],
+                'strategy' => $result['strategy'],
+                'detections' => [],
+                'message' => 'No food detected. Try better lighting and center the plate in the frame.',
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'provider' => $result['provider'],
+            'strategy' => $result['strategy'],
+            'detections' => $result['detections'],
         ]);
     }
 

@@ -3,28 +3,34 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/auth/presentation/splash_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
-import 'package:mobile/shared/notifications/push_notification_service.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 import 'package:mobile/shared/app_update/app_update_banner.dart';
 import 'package:mobile/shared/app_update/app_update_provider.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
-import 'package:mobile/shared/payments/paystack_payment_launcher.dart';
 import 'package:mobile/shared/fitness/step_goal_notification_listener.dart';
 import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-  await BackgroundStepTrackingBootstrap.initializeOnAppStart();
+  // Splash text should appear on the first Flutter frame (no blank flash after native splash).
+  await GoogleFonts.pendingFonts([
+    GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
+    GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+    GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500),
+    GoogleFonts.inter(),
+  ]);
   runApp(const ProviderScope(child: MyApp()));
+
+  // Start step tracking after the first frame so launch UI is not blocked.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(BackgroundStepTrackingBootstrap.initializeOnAppStart());
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -36,12 +42,15 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: rootScaffoldMessengerKey,
       title: 'AkwaabaFit',
-      theme: ThemeData(primarySwatch: Colors.green),
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+      ),
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
         return AppUpdateBannerHost(
           child: StepGoalNotificationListener(
-            child: _PushAndProfileSyncListener(child: child),
+            child: _OfflineSyncListener(child: child),
           ),
         );
       },
@@ -50,20 +59,19 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class _PushAndProfileSyncListener extends ConsumerStatefulWidget {
-  const _PushAndProfileSyncListener({required this.child});
+class _OfflineSyncListener extends ConsumerStatefulWidget {
+  const _OfflineSyncListener({required this.child});
 
   final Widget child;
 
   @override
-  ConsumerState<_PushAndProfileSyncListener> createState() => _PushAndProfileSyncListenerState();
+  ConsumerState<_OfflineSyncListener> createState() => _OfflineSyncListenerState();
 }
 
-class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSyncListener>
+class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
     with WidgetsBindingObserver {
   final _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _sub;
-  final _push = PushNotificationService();
 
   // Simple debounce to avoid rapid re-sync calls.
   DateTime? _lastSyncAttempt;
@@ -72,13 +80,12 @@ class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSync
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    PaystackPaymentLauncher.instance.ensureInitialized();
 
-    // Attempt a sync on app start.
     Future.microtask(() async {
-      await _push.syncTokenIfLoggedIn();
-      await ref.read(profileRepositoryProvider).syncPendingIfAny();
-      await ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+      try {
+        await ref.read(profileRepositoryProvider).syncPendingIfAny();
+        await ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+      } catch (_) {}
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(activityDataProvider);
       ref.invalidate(nutritionHistoryProvider);
@@ -96,7 +103,6 @@ class _PushAndProfileSyncListenerState extends ConsumerState<_PushAndProfileSync
       if (last != null && now.difference(last).inSeconds < 5) return;
       _lastSyncAttempt = now;
 
-      _push.syncTokenIfLoggedIn();
       ref.read(profileRepositoryProvider).syncPendingIfAny();
       ref.read(nutritionRepositoryProvider).syncPendingIfAny();
       ref.invalidate(dashboardDataProvider);

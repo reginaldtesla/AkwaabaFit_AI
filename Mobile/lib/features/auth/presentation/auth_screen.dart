@@ -412,7 +412,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Fitness, nutrition & dietitian care',
+          'Fitness & nutrition tracking',
           textAlign: TextAlign.center,
           style: GoogleFonts.inter(
             fontSize: 14,
@@ -458,7 +458,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             Text(
               _isLogin
                   ? 'Sign in to continue tracking your health.'
-                  : 'Join AkwaabaFit to scan meals and track your goals.',
+                  : 'Join AkwaabaFit to track meals and reach your goals.',
               style: GoogleFonts.inter(
                 fontSize: 13,
                 height: 1.4,

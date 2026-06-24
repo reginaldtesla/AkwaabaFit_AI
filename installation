@@ -687,11 +687,11 @@ flutter run --dart-define=API_BASE_URL=https://api.YOUR-DOMAIN.com/api
 | **Path** | `/var/www/MiniISP-Landing-page/TesNet` | `/var/www/AkwaabaFitAIProject/Backend` |
 | **Database** | `tesnet` | `akwaabafit` |
 | **Apache vhost** | `tesnet.conf` → `192.168.88.2` | `akwaabafit.conf` → `api.YOUR-DOMAIN.com` |
-| **Public URL** | LAN HTTP for students | Cloudflare HTTPS for mobile |
-| **Paystack webhook** | TesNet URL (or ngrok while testing) | `https://api.YOUR-DOMAIN.com/api/webhook/paystack` |
+| **Public URL** | Cloudflare HTTPS (`portal.yourdomain.com`) | Cloudflare HTTPS (`api.YOUR-DOMAIN.com`) |
+| **Paystack webhook** | `https://portal.yourdomain.com/portal/payments/webhook` | `https://api.YOUR-DOMAIN.com/api/webhook/paystack` |
 | **FreeRADIUS** | Yes (TesNet only) | No |
 
-Both can run **ngrok (TesNet dev)** and **Cloudflare (AkwaabaFit)** at the same time — different URLs.
+Both apps can share **one Cloudflare tunnel** with two hostnames — see TesNet [`docs/CLOUDFLARE_TUNNEL.md`](../TesNet/docs/CLOUDFLARE_TUNNEL.md).
 
 ---
 

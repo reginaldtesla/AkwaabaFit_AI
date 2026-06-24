@@ -9,27 +9,36 @@ import 'package:permission_handler/permission_handler.dart';
 
 /// Starts / restores the foreground step service (boot, app launch, resume).
 abstract final class BackgroundStepTrackingBootstrap {
-  /// Call from [main] before [runApp].
+  /// Call after the first frame (not from [main] before [runApp]).
   static Future<void> initializeOnAppStart() async {
     if (!Platform.isAndroid) return;
+
+    // Android 14+ (targetSdk 36): health foreground service needs activity
+    // recognition granted first — starting without it loops SecurityExceptions
+    // and can freeze the UI on a black window.
+    final activity = await Permission.activityRecognition.status;
+    if (!activity.isGranted) {
+      return;
+    }
+
+    final notifications = await Permission.notification.status;
+    if (!notifications.isGranted) {
+      await Permission.notification.request();
+    }
+
     await BackgroundStepService.ensureStarted();
     await PersistentStepTrackingPrefs.markConfigured();
-
-    final service = FlutterBackgroundService();
-    if (!await service.isRunning()) {
-      await service.startService();
-    }
   }
 
   /// Call when the app returns to foreground — restarts service if the OS killed it.
   static Future<void> ensureRunningOnResume() async {
     if (!Platform.isAndroid) return;
     if (!await PersistentStepTrackingPrefs.isConfigured()) return;
+    if (!await Permission.activityRecognition.isGranted) return;
 
     final service = FlutterBackgroundService();
     if (!await service.isRunning()) {
       await BackgroundStepService.ensureStarted();
-      await service.startService();
     }
   }
 

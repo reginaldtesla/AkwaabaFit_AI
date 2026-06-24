@@ -47,8 +47,8 @@ class AppBottomNav extends StatelessWidget {
               onTap: () => onTabSelected(AppTab.stats),
             ),
             _navItem(
-              icon: Icons.restaurant_menu,
-              label: 'Advice',
+              icon: Icons.health_and_safety_outlined,
+              label: 'Safety',
               isActive: activeTab == AppTab.safety,
               onTap: () => onTabSelected(AppTab.safety),
             ),

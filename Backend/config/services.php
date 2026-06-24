@@ -72,4 +72,19 @@ return [
         'service_account_json' => env('FCM_SERVICE_ACCOUNT_JSON'),
     ],
 
+    /*
+    | Hybrid food scan: Ghana ConvNeXt (HF) + Gemini Flash fallback.
+    */
+    'food_scan' => [
+        'timeout' => (int) env('FOOD_SCAN_TIMEOUT', 90),
+        'huggingface_token' => env('HUGGINGFACE_API_TOKEN'),
+        'huggingface_model' => env(
+            'FOOD_SCAN_HF_MODEL',
+            'Kennethdot/convnext_finetuned_ghanaian_food'
+        ),
+        'hf_confidence_threshold' => (float) env('FOOD_SCAN_HF_THRESHOLD', 0.65),
+        'gemini_api_key' => env('GEMINI_API_KEY'),
+        'gemini_model' => env('FOOD_SCAN_GEMINI_MODEL', 'gemini-2.5-flash'),
+    ],
+
 ];

@@ -139,6 +139,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Nutrition Routes
     Route::post('/nutrition/log', [NutritionController::class, 'log']);
+    Route::post('/nutrition/scan', [NutritionController::class, 'scan']);
     Route::get('/nutrition/history', [NutritionController::class, 'history']);
     Route::get('/nutrition/food', [NutritionController::class, 'food']);
     Route::get('/nutrition/foods', [NutritionController::class, 'foods']);

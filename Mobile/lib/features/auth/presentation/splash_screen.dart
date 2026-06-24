@@ -28,7 +28,6 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
   }
 
   if (token == null || token.isEmpty) {
-    await Future.delayed(const Duration(seconds: 3));
     return 'not_authenticated';
   }
 
@@ -60,12 +59,12 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
       await prefs.setBool(OfflinePrefsKeys.profileCompleteCached, profileCompleted);
     } catch (_) {}
 
-    await Future.delayed(const Duration(seconds: 3));
+    await Future.delayed(const Duration(milliseconds: 800));
     return profileCompleted
         ? 'authenticated_profile_complete'
         : 'authenticated_profile_incomplete';
   } catch (e) {
-    await Future.delayed(const Duration(seconds: 3));
+    await Future.delayed(const Duration(milliseconds: 400));
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(OfflinePrefsKeys.profileCompleteCached) == true) {
@@ -393,8 +392,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             const SizedBox(height: 12),
                             Text(
                               'Your Ghana-focused fitness and nutrition companion: '
-                              'scan local meals, track daily steps, log calories, and '
-                              'connect with dietitians when you need expert advice.',
+                              'track daily steps, log calories, and '
+                              'build healthier habits every day.',
                               style: GoogleFonts.inter(
                                 fontSize: 15,
                                 height: 1.45,

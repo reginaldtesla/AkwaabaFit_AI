@@ -33,7 +33,7 @@ class NutritionRepository {
         res.contains(ConnectivityResult.ethernet);
   }
 
-  /// Returns local row ids so the scanner can patch nutrition after a server refresh.
+  /// Returns local row ids for offline meal sync.
   Future<({int mealCacheId, int outboxId})> logMeal(
     Map<String, dynamic> meal,
   ) async {

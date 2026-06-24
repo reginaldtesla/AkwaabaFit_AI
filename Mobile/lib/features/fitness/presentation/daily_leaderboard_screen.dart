@@ -12,7 +12,6 @@ import 'package:mobile/features/fitness/presentation/activity_tracking_screen.da
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
-import 'package:mobile/features/telehealth/presentation/tele_dietetics_screen.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
@@ -635,7 +634,7 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
         return;
       case AppTab.safety:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const TeleDieteticsScreen()),
+          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
         );
         return;
       case AppTab.profile:

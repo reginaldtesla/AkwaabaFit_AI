@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AkwaabaFitAI — Food detection & nutrition</title>
+  <meta name="description" content="AkwaabaFitAI provides on-device food detection and nutrition estimates for Ghanaian dishes. Download the APK or use our API.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#f7f7f7;--accent:#ffb703;--brand:#006b3c;--muted:#6b7280}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:var(--bg);color:#0f172a}
+    .wrap{max-width:1100px;margin:40px auto;padding:28px}
+    header{display:flex;align-items:center;gap:18px}
+    .logo{width:88px;height:88px;border-radius:18px;background:linear-gradient(135deg,var(--brand),#0b9a56);display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .logo img{width:100%;height:100%;object-fit:cover}
+    h1{margin:0;font-size:32px}
+    p.lead{margin:10px 0 22px;color:var(--muted)}
+    .ctas{display:flex;gap:12px}
+    .btn{background:var(--brand);color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:600}
+    .btn.alt{background:#fff;color:var(--brand);border:1px solid rgba(0,0,0,0.08)}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:28px;margin-top:28px}
+    .card{background:#fff;border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(12,15,20,0.04)}
+    .features{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+    .feature{background:linear-gradient(180deg,#fff,#fbfbfb);padding:14px;border-radius:10px;border:1px solid #f1f1f1}
+    footer{margin-top:36px;color:var(--muted);font-size:14px;text-align:center}
+    .small{font-size:13px;color:var(--muted)}
+    form input,form textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6e6;margin-top:8px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}.logo{width:64px;height:64px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo"><img src="images/app_icon_logo.png" alt="AkwaabaFitAI"></div>
+      <div>
+        <h1>AkwaabaFitAI — Identify food & get nutrition, offline</h1>
+        <p class="lead">Fast, private on-device detection for Ghanaian dishes. Download the APK or try our API for advanced models.</p>
+        <div class="ctas">
+          <a class="btn" href="#download">Download APK</a>
+          <a class="btn alt" href="#api">API Docs</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h3>What it does</h3>
+          <p class="small">AkwaabaFitAI performs fast on-device food detection using an ONNX model inside the mobile app. It identifies local dishes like Banku, Jollof, Kenkey and provides nutrition estimates per serving.</p>
+
+          <div class="features">
+            <div class="feature"><strong>Offline</strong><div class="small">On-device inference, no images leave your phone.</div></div>
+            <div class="feature"><strong>Local dishes</strong><div class="small">Built for Ghanaian cuisine with curated defaults.</div></div>
+            <div class="feature"><strong>API support</strong><div class="small">Server API available for larger models / logging.</div></div>
+          </div>
+
+          <h4 style="margin-top:18px">How it works</h4>
+          <ol>
+            <li>Open the app and point your camera at a meal.</li>
+            <li>The model detects the dish and shows nutrition.</li>
+            <li>Save or upload optional logs to your account.</li>
+          </ol>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <h3 id="download">Download APK</h3>
+          <p class="small">Install the Android APK to try the app now. Note: you may need to allow installs from unknown sources to sideload.</p>
+          <a class="btn" href="REPLACE_WITH_APK_URL">Download APK</a>
+          <p class="small" style="margin-top:12px">Or scan the QR (Stitch will generate a QR for the public URL).</p>
+        </div>
+
+        <div class="card" style="margin-top:18px" id="api">
+          <h3>API</h3>
+          <p class="small">Server endpoints are available for cloud inference, logging, and analytics.</p>
+          <div class="small"><strong>Base URL:</strong> https://REPLACE_WITH_YOUR_DOMAIN/api/</div>
+          <p class="small">Authentication: Bearer token</p>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h4>Quick demo</h4>
+          <div style="height:220px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#fbfff9,#f6fff3);border-radius:8px;margin-bottom:12px">
+            <img src="images/app_icon_logo.png" alt="AkwaabaFitAI preview" style="width:160px;height:160px;border-radius:24px;object-fit:cover;box-shadow:0 10px 25px rgba(0,0,0,0.08)">
+          </div>
+
+          <h4>Join beta</h4>
+          <p class="small">Get the APK and updates — we'll email you when new builds are ready.</p>
+          <form action="REPLACE_FORM_ACTION" method="post">
+            <input type="text" name="name" placeholder="Your name" required>
+            <input type="email" name="email" placeholder="Email address" required>
+            <textarea name="message" placeholder="Message (optional)" rows="3"></textarea>
+            <button class="btn" style="width:100%;margin-top:10px">Join Beta</button>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <h4>Sample labels</h4>
+          <p class="small">banku, beans, bread, burger, chicken, egg-pepper, fufu, hausa-koko, jollof, kelewele, kenkey, kokonte, koose, meat, nkate-cake, pasta, pizza, plantain, rice, salad, waakye, yam</p>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <h4>Contact</h4>
+          <p class="small">developer@yourdomain.com</p>
+          <p class="small">GitHub: https://github.com/your-repo (optional)</p>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="small">AkwaabaFitAI © 2026 — Built with privacy-first on-device models.</div>
+    </footer>
+  </div>
+</body>
+</html>

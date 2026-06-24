@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#1A5D1A</color>
+    <!-- Matches Flutter SplashScreen softWhite (#F8FAFC) -->
+    <color name="splash_background">#F8FAFC</color>
 </resources>
