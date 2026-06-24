@@ -13,10 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'dietician_name',
     'advisor_user_id',
     'scheduled_time',
-    'payment_status',
-    'paystack_reference',
-    'amount',
-    'currency',
     'paid_at',
     'session_expires_at',
 ])]
@@ -30,7 +26,6 @@ class Consultation extends Model
             'scheduled_time' => 'datetime',
             'paid_at' => 'datetime',
             'session_expires_at' => 'datetime',
-            'amount' => 'integer',
         ];
     }
 

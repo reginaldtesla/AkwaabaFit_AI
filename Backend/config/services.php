@@ -55,16 +55,6 @@ return [
     ],
 
     /*
-    | Paystack (consultations / advice sessions)
-    */
-    'paystack' => [
-        'secret_key' => env('PAYSTACK_SECRET_KEY'),
-        'public_key' => env('PAYSTACK_PUBLIC_KEY'),
-        'currency' => env('PAYSTACK_CURRENCY', 'GHS'),
-        'ask_now_amount' => (int) env('PAYSTACK_ASK_NOW_AMOUNT', 5000), // in pesewas
-    ],
-
-    /*
     | Firebase Cloud Messaging (push notifications)
     */
     'fcm' => [

@@ -13,7 +13,7 @@
         th, td { padding: 10px 8px; border-bottom: 1px solid #1f2937; text-align: left; font-size: 14px; }
         th { color: #93c5fd; font-weight: 700; }
         .badge { display:inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #334155; color: #cbd5e1; }
-        .paid { border-color: #16a34a; color: #bbf7d0; }
+        .live { border-color: #16a34a; color: #bbf7d0; }
         a { color: #93c5fd; text-decoration: none; }
         .btn { background: #1f2937; border: 1px solid #334155; color: #e5e7eb; padding: 8px 10px; border-radius: 10px; cursor:pointer; }
         .muted { color: #9ca3af; }
@@ -45,12 +45,20 @@
             </thead>
             <tbody>
             @forelse($consultations as $c)
+                @php
+                    $exp = $c->session_expires_at;
+                    $start = $c->scheduled_time;
+                    $isExpired = $exp ? now()->gte($exp) : false;
+                    $isWaiting = $start && now()->lt($start);
+                    $isLive = !$isExpired && !$isWaiting && $exp;
+                    $label = $isLive ? 'live' : ($isWaiting ? 'scheduled' : ($isExpired ? 'ended' : '—'));
+                @endphp
                 <tr>
                     <td>#{{ $c->id }}</td>
                     <td>{{ $c->user?->name ?? ('User #' . $c->user_id) }}</td>
                     <td>
-                        <span class="badge {{ $c->payment_status === 'paid' ? 'paid' : '' }}">
-                            {{ $c->payment_status }}
+                        <span class="badge {{ $isLive ? 'live' : '' }}">
+                            {{ $label }}
                         </span>
                     </td>
                     <td class="muted">{{ $c->created_at }}</td>

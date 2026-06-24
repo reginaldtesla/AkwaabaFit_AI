@@ -13,8 +13,8 @@
         th,td{padding:10px;border-bottom:1px solid #1f2a44;vertical-align:top}
         th{color:#93c5fd;text-align:left;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
         .pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800}
-        .paid{background:#052e1a;color:#86efac;border:1px solid #14532d}
-        .pending{background:#2a1b0f;color:#fdba74;border:1px solid #7c2d12}
+        .live{background:#052e1a;color:#86efac;border:1px solid #14532d}
+        .waiting{background:#1e293b;color:#93c5fd;border:1px solid #334155}
         .expired{background:#2b0b0b;color:#fecaca;border:1px solid #7f1d1d}
     </style>
 </head>
@@ -41,19 +41,24 @@
             @foreach ($items as $it)
                 @php
                     $exp = $it['session_expires_at'] ? \Carbon\Carbon::parse($it['session_expires_at']) : null;
+                    $start = $it['scheduled_time'] ? \Carbon\Carbon::parse($it['scheduled_time']) : null;
                     $isExpired = $exp ? now()->gte($exp) : false;
+                    $isWaiting = $start && now()->lt($start);
+                    $isLive = !$isExpired && !$isWaiting && $exp;
                 @endphp
                 <tr>
                     <td>#{{ $it['id'] }}</td>
                     <td>User {{ $it['user_id'] }}</td>
                     <td>{{ $it['dietician_name'] }}</td>
                     <td>
-                        @if ($it['payment_status'] === 'paid' && !$isExpired)
-                            <span class="pill paid">PAID</span>
-                        @elseif ($it['payment_status'] === 'paid' && $isExpired)
-                            <span class="pill expired">EXPIRED</span>
+                        @if ($isLive)
+                            <span class="pill live">LIVE</span>
+                        @elseif ($isWaiting)
+                            <span class="pill waiting">SCHEDULED</span>
+                        @elseif ($isExpired)
+                            <span class="pill expired">ENDED</span>
                         @else
-                            <span class="pill pending">PENDING</span>
+                            <span class="pill waiting">—</span>
                         @endif
                     </td>
                     <td style="color:#94a3b8">

@@ -40,7 +40,7 @@ class AdvisorConsultationApiController extends Controller
             ->where('advisor_user_id', $advisorId)
             ->orderByDesc('updated_at')
             ->limit(100)
-            ->get(['id', 'user_id', 'dietician_name', 'payment_status', 'session_expires_at', 'updated_at'])
+            ->get(['id', 'user_id', 'dietician_name', 'session_expires_at', 'updated_at'])
             ->map(function (Consultation $c) {
                 $clientName = trim((string) ($c->user?->name ?? ''));
 
@@ -49,7 +49,6 @@ class AdvisorConsultationApiController extends Controller
                     'user_id' => $c->user_id,
                     'client_name' => $clientName !== '' ? $clientName : ('User #'.$c->user_id),
                     'dietician_name' => $c->dietician_name,
-                    'payment_status' => $c->payment_status,
                     'session_expires_at' => optional($c->session_expires_at)->toIso8601String(),
                     'updated_at' => optional($c->updated_at)->toIso8601String(),
                 ];
@@ -141,11 +140,11 @@ class AdvisorConsultationApiController extends Controller
                 ], 402);
             }
 
-            $msg = $consultation->payment_status !== 'paid'
-                ? 'Payment required'
-                : 'Session expired. User must pay again to continue.';
-
-            return response()->json(['status' => 'error', 'message' => $msg], 402);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Session expired.',
+                'session' => $this->sessionJson($consultation),
+            ], 402);
         }
 
         $data = $request->validate([

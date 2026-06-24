@@ -114,11 +114,11 @@ class ConsultationMessageController extends Controller
                 ], 402);
             }
 
-            $msg = $consultation->payment_status !== 'paid'
-                ? 'Payment required'
-                : 'Session expired. Please pay again to continue.';
-
-            return response()->json(['status' => 'error', 'message' => $msg], 402);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Session expired.',
+                'session' => $this->sessionJson($consultation),
+            ], 402);
         }
 
         $data = $request->validate([

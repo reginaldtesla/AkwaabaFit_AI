@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Consultation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -23,11 +22,9 @@ class ConsultationScheduledSessionTest extends TestCase
             'user_id' => $client->id,
             'dietician_name' => 'Dr Test',
             'advisor_user_id' => $advisor->id,
-            'payment_status' => 'paid',
             'paid_at' => now(),
             'scheduled_time' => $start,
             'session_expires_at' => $start->copy()->addHours(2),
-            'paystack_reference' => 'tref_'.Str::random(20),
         ]);
 
         Sanctum::actingAs($client);
@@ -52,11 +49,9 @@ class ConsultationScheduledSessionTest extends TestCase
             'user_id' => $client->id,
             'dietician_name' => 'Dr Test',
             'advisor_user_id' => $advisor->id,
-            'payment_status' => 'paid',
             'paid_at' => now()->subHour(),
             'scheduled_time' => $start,
             'session_expires_at' => $start->copy()->addHours(2),
-            'paystack_reference' => 'tref_'.Str::random(20),
         ]);
 
         Sanctum::actingAs($client);

@@ -26,7 +26,7 @@
                 <h2 style="margin:0">Consultation #{{ $consultation->id }}</h2>
                 <div class="muted">
                     User {{ $consultation->user_id }} • {{ $consultation->dietician_name }} •
-                    payment={{ $consultation->payment_status }} • expires={{ optional($consultation->session_expires_at)->toIso8601String() ?? '—' }}
+                    expires={{ optional($consultation->session_expires_at)->toIso8601String() ?? '—' }}
                 </div>
             </div>
             <div><a href="/admin/advice">Back to inbox</a></div>

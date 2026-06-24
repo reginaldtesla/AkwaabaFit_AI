@@ -13,20 +13,6 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-// Paystack callback URL (used after checkout). The app verifies payment separately.
-Route::get('/paystack/return', function () {
-    $reference = request()->query('reference') ?? request()->query('trxref');
-    $scheme = (string) config('mobile_app.deep_link_scheme', 'akwaabafit');
-    $deepLink = $reference
-        ? $scheme.'://payment-return?reference='.urlencode((string) $reference)
-        : null;
-
-    return view('paystack.return', [
-        'reference' => $reference,
-        'deep_link' => $deepLink,
-    ]);
-});
-
 // Public portal accessed from mobile via signed link.
 // Use a relative signature so local/LAN hosts work in dev.
 Route::middleware('signed:relative')->group(function () {

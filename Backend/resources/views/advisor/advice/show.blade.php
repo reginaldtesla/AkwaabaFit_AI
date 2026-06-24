@@ -24,7 +24,7 @@
     <div class="top">
         <div>
             <div style="font-size:18px; font-weight:800;">{{ trim($consultation->user?->name ?? '') !== '' ? $consultation->user->name : ('Session #' . $consultation->id) }}</div>
-            <div style="color:#9ca3af; margin-top:4px;">Session #{{ $consultation->id }} • Status: {{ $consultation->payment_status }}</div>
+            <div style="color:#9ca3af; margin-top:4px;">Session #{{ $consultation->id }} • expires {{ optional($consultation->session_expires_at)->toDayDateTimeString() ?? '—' }}</div>
         </div>
         <div style="display:flex; gap:10px; align-items:center;">
             <a class="btn" href="{{ route('advisor.consultations.index') }}">Back</a>

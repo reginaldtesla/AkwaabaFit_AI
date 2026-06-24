@@ -13,12 +13,12 @@ class AdminAdviceChatController extends Controller
         $items = Consultation::query()
             ->orderByDesc('updated_at')
             ->limit(100)
-            ->get(['id', 'user_id', 'dietician_name', 'payment_status', 'session_expires_at', 'created_at'])
+            ->get(['id', 'user_id', 'dietician_name', 'scheduled_time', 'session_expires_at', 'created_at'])
             ->map(fn (Consultation $c) => [
                 'id' => $c->id,
                 'user_id' => $c->user_id,
                 'dietician_name' => $c->dietician_name,
-                'payment_status' => $c->payment_status,
+                'scheduled_time' => optional($c->scheduled_time)->toIso8601String(),
                 'session_expires_at' => optional($c->session_expires_at)->toIso8601String(),
                 'created_at' => optional($c->created_at)->toIso8601String(),
             ])

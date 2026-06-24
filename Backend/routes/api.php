@@ -7,7 +7,6 @@ use App\Http\Controllers\BroadcastingClientConfigController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConsultationController;
 use App\Http\Controllers\ConsultationMessageController;
-use App\Http\Controllers\ConsultationPaymentController;
 use App\Http\Controllers\DailyStepLogController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceTokenController;
@@ -15,7 +14,6 @@ use App\Http\Controllers\DietitianApplicationApiController;
 use App\Http\Controllers\DietitianController;
 use App\Http\Controllers\NutritionController;
 use App\Http\Controllers\PasswordResetController;
-use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
 use App\Models\Consultation;
 use Illuminate\Http\Request;
@@ -28,9 +26,6 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgot-password', [PasswordResetController::class, 'forgot']);
 Route::post('/reset-password', [PasswordResetController::class, 'reset']);
-
-// Webhooks
-Route::post('/webhook/paystack', [PaymentController::class, 'handleWebhook']);
 
 // Protected Routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -57,21 +52,19 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Consultation Routes
     Route::post('/consultations/book', [ConsultationController::class, 'book']);
-    Route::post('/consultations/initiate', [ConsultationPaymentController::class, 'initiate']);
-    Route::get('/consultations/verify', [ConsultationPaymentController::class, 'verify']);
     Route::get('/consultations/my', function (Request $request) {
         $user = $request->user();
         $items = Consultation::query()
             ->where('user_id', $user->id)
             ->orderByDesc('created_at')
             ->limit(50)
-            ->get(['id', 'dietician_name', 'advisor_user_id', 'scheduled_time', 'payment_status'])
+            ->get(['id', 'dietician_name', 'advisor_user_id', 'scheduled_time', 'session_expires_at'])
             ->map(fn ($c) => [
                 'id' => $c->id,
                 'dietician_name' => $c->dietician_name,
                 'advisor_user_id' => $c->advisor_user_id,
                 'scheduled_time' => optional($c->scheduled_time)->toIso8601String(),
-                'payment_status' => $c->payment_status,
+                'session_expires_at' => optional($c->session_expires_at)->toIso8601String(),
             ])
             ->values();
 
