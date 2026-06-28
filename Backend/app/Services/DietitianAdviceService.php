@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\GhanaianMealSuggestions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -225,7 +226,7 @@ class DietitianAdviceService
             $recommendations[] = [
                 'category' => 'protein',
                 'title' => 'Boost protein next',
-                'detail' => "You need roughly {$proteinGap}g more protein today. Try tilapia with banku, beans stew (gobe), boiled eggs, or chicken light soup.",
+                'detail' => "You need roughly {$proteinGap}g more protein today. Try banku and tilapia, waakye with egg and fish, or red-red with plantain.",
             ];
         } elseif ($targetP > 0 && $proteinGap <= 0) {
             $recommendations[] = [
@@ -259,7 +260,12 @@ class DietitianAdviceService
             }
         }
 
-        $nextMeal = $this->suggestNextMeal($goal, $remainingKcal, $proteinGap, $carbsGap, $mealsLoggedToday);
+        $nextMeal = GhanaianMealSuggestions::nextMeal(
+            mealsLoggedToday: $mealsLoggedToday,
+            goal: $goal,
+            remainingKcal: $remainingKcal,
+            proteinGap: $proteinGap,
+        );
         $hydration = 'Aim for 6–8 glasses of water today. Extra important with jollof, waakye, or spicy stews.';
         $portionTip = 'Use your palm for protein, fist for starches, and two cupped hands for vegetables when plating Ghanaian meals.';
 
@@ -303,7 +309,7 @@ class DietitianAdviceService
 
         return [
             'insight' => Str::limit($insight, 255, ''),
-            'pairing' => $this->pairingSuggestion($slug),
+            'pairing' => GhanaianMealSuggestions::pairingForFood($slug) ?? $this->pairingSuggestion($slug),
             'portion' => $this->portionNote($slug, $calories),
         ];
     }
@@ -362,7 +368,7 @@ class DietitianAdviceService
         ];
 
         $prompt = 'You are a warm, professional registered dietitian coaching a Ghanaian client through a mobile app. '
-            .'Use familiar local foods (banku, fufu, jollof, waakye, kenkey, kontomire, gobe, tilapia, groundnut soup). '
+            .implode(' ', GhanaianMealSuggestions::geminiAuthenticityRules()).' '
             .'Be practical—not preachy. No medical diagnosis. JSON only with this shape: '
             .'{"headline":"...","summary":"2 sentences max","recommendations":[{"category":"habit|calories|protein|food|environment","title":"...","detail":"..."}],'
             .'"nextMeal":{"suggestion":"Ghanaian dish","reason":"..."},"hydrationTip":"...","portionTip":"..."}. '
@@ -406,8 +412,9 @@ class DietitianAdviceService
         ];
 
         $prompt = 'You are a Ghanaian dietitian. Give brief coaching for this logged/scanned meal. '
-            .'JSON only: {"insight":"max 220 chars, friendly 2nd person","pairing":"optional side pairing","portion":"optional portion note"}. '
-            .'Reference local foods when relevant. No diagnosis. Data: '
+            .implode(' ', GhanaianMealSuggestions::geminiAuthenticityRules()).' '
+            .'JSON only: {"insight":"max 220 chars, friendly 2nd person","pairing":"optional realistic side pairing","portion":"optional portion note"}. '
+            .'Data: '
             .json_encode($context, JSON_UNESCAPED_UNICODE);
 
         $parsed = $this->geminiJson($prompt);
@@ -577,14 +584,14 @@ class DietitianAdviceService
             return [
                 'category' => 'food',
                 'title' => 'Starch portion check',
-                'detail' => 'Banku, fufu, and kenkey fill you fast. One moderate ball with lean soup or fish is usually enough per meal.',
+                'detail' => 'One ball of banku, fufu, or kenkey with the right soup or fish is how Ghanaians plate it—not double starch.',
             ];
         }
         if (str_contains($slug, 'waakye')) {
             return [
                 'category' => 'food',
-                'title' => 'Waakye balance',
-                'detail' => "Waakye packs carbs and beans—great for energy. Add egg or fish for protein and go easy on extra gari if you're not very active today.",
+                'title' => 'Waakye chop balance',
+                'detail' => 'Pick your sides like at the vendor—shito, gari, egg, plantain—but you do not need every topping every time.',
             ];
         }
         if (str_contains($slug, 'kelewele') || str_contains($slug, 'fried')) {
@@ -598,76 +605,33 @@ class DietitianAdviceService
         return null;
     }
 
-    /**
-     * @return array{suggestion: string, reason: string}|null
-     */
-    private function suggestNextMeal(
-        string $goal,
-        int $remainingKcal,
-        int $proteinGap,
-        int $carbsGap,
-        int $mealsLoggedToday,
-    ): ?array {
-        if ($mealsLoggedToday === 0) {
-            return [
-                'suggestion' => 'Hausa koko with koose or boiled eggs',
-                'reason' => "A familiar Ghanaian breakfast that's light but gives protein to start the day.",
-            ];
-        }
-
-        if ($proteinGap > 20) {
-            return [
-                'suggestion' => 'Grilled tilapia with kontomire stew (no extra oil)',
-                'reason' => "You're low on protein—fish and leafy greens close the gap without heavy starch.",
-            ];
-        }
-
-        if ($remainingKcal < 0) {
-            return [
-                'suggestion' => 'Light groundnut soup with a small fufu portion',
-                'reason' => 'Nutrient-rich but you can keep the fufu modest after a higher-calorie day.',
-            ];
-        }
-
-        if ($goal === 'Gain weight' && $remainingKcal > 500) {
-            return [
-                'suggestion' => 'Banku with grilled fish and a groundnut snack',
-                'reason' => 'Calorie-dense and protein-forward for healthy weight gain.',
-            ];
-        }
-
-        if ($carbsGap > 30) {
-            return [
-                'suggestion' => 'Waakye with boiled egg and salad',
-                'reason' => 'Steady carbs from rice and beans plus fiber from vegetables.',
-            ];
-        }
-
-        return [
-            'suggestion' => 'Vegetable soup with a palm-sized rice or yam portion',
-            'reason' => 'Balanced plate with fiber, vitamins, and controlled starch.',
-        ];
+    private function pairingSuggestion(string $slug): ?string
+    {
+        return GhanaianMealSuggestions::pairingForFood($slug);
     }
 
+    /**
+     * @return string|null
+     */
     private function mealInsightForSlug(string $slug, string $goal): ?string
     {
         $tips = [
             'jollof' => 'Jollof is a celebration dish—enjoy it with protein on the side and watch oily extras if weight loss is your goal.',
-            'banku' => 'Banku fills you quickly. One serving with grilled tilapia and pepper is a balanced Ghanaian plate.',
-            'fufu' => 'Fufu with light soup is satisfying—keep the soup lean and the fufu portion to about one medium ball.',
-            'kenkey' => 'Kenkey pairs well with fried fish; swap occasional frying for grilled fish to cut extra fat.',
-            'waakye' => 'Waakye gives lasting energy from beans and rice—add egg or fish so protein keeps you full longer.',
-            'kelewele' => 'Kelewele is best as a side. A small portion with a protein main avoids an all-carb meal.',
-            'plantain' => 'Ripe plantain is energy-rich. Boiled or grilled versions are gentler than large fried portions daily.',
-            'beans' => 'Beans and gobe are excellent fiber and plant protein—ideal for steady blood sugar.',
-            'rice' => 'Plain rice is a blank canvas—always add vegetables and a palm-sized protein portion.',
-            'yam' => 'Yam is nutritious starch; pair with kontomire or garden egg stew for micronutrients.',
-            'kokonte' => 'Kokonte is lighter than fufu for some—still mind portion size with soup.',
-            'koose' => 'Koose is fried—balance with Hausa koko or fruit rather than another heavy starch.',
-            'hausa-koko' => 'Hausa koko is a gentle breakfast—add groundnuts or egg if you need more protein.',
-            'chicken' => "Chicken is lean protein—remove skin if you're reducing fat intake.",
-            'meat' => 'Goat or beef stew is iron-rich; trim visible fat and pair with vegetables.',
-            'egg-pepper' => 'Eggs are a quick protein win—great after a low-protein morning.',
+            'banku' => 'Banku goes with okro stew or grilled tilapia and shito—that is the chop people know.',
+            'fufu' => 'Fufu with light soup or groundnut soup—one medium ball is enough for most people.',
+            'kenkey' => 'Kenkey and fried fish with shito is the classic; grilled fish works too.',
+            'waakye' => 'Waakye chop: add shito, gari, egg, plantain—how the vendor serves it.',
+            'kelewele' => 'Kelewele is a side chop—pair with rice, jollof, or beans, not as the whole meal.',
+            'plantain' => 'Fried plantain with beans stew (red-red) or beside waakye—not eaten alone as dinner.',
+            'beans' => 'Gobe/red-red with ripe plantain is a proper plate—filling and very local.',
+            'rice' => 'Rice and stew from the chop bar, with salad or kontomire if you have it.',
+            'yam' => 'Boiled yam (ampesi) with kontomire stew or palm oil stew.',
+            'kokonte' => 'Kokonte with groundnut or palm nut soup—mind the portion.',
+            'koose' => 'Koose belongs with Hausa koko at breakfast—not as a random lunch side.',
+            'hausa-koko' => 'Koko is drunk with koose or bofrot—classic Hausa breakfast.',
+            'chicken' => 'Stew chicken with jollof or plain rice is how chop bars serve it.',
+            'meat' => 'Goat or beef in light soup or stew—with fufu or rice.',
+            'egg-pepper' => 'Eggs with bread or on waakye—not a strange solo dinner.',
         ];
 
         foreach ($tips as $key => $tip) {
@@ -683,6 +647,18 @@ class DietitianAdviceService
         return null;
     }
 
+    private function portionNote(string $slug, int $calories): ?string
+    {
+        if ($calories >= 800) {
+            return 'This looks like a full chop bar portion—next time one ball of swallow or a smaller waakye base may be enough.';
+        }
+        if (str_contains($slug, 'fufu') || str_contains($slug, 'banku') || str_contains($slug, 'kenkey')) {
+            return 'One ball is the usual serving—two balls is “I am very hungry” territory.';
+        }
+
+        return null;
+    }
+
     private function genericMealInsight(
         string $display,
         int $calories,
@@ -691,40 +667,15 @@ class DietitianAdviceService
         int $proteinGap,
     ): string {
         if ($calories >= 700) {
-            return "$display is a hearty meal. Drink water and make your next plate lighter on starch.";
+            return "$display is a hearty chop. Drink water and make your next plate lighter on starch.";
         }
         if ($proteinGap > 25) {
-            return "Good choice logging $display. Your day still needs more protein—add fish, beans, or eggs next.";
+            return "Good logging $display. Your day still needs protein—banku and tilapia, waakye with egg, or gobe next.";
         }
         if ($goal === 'Lose weight' && $remainingKcal < 0) {
-            return "$display logged. You're above target today—a short walk and a vegetable-heavy next meal will help.";
+            return "$display logged. You're above target—a short walk and kenkey with grilled fish or light soup helps.";
         }
 
-        return "Nice work logging $display. Consistent tracking is how we fine-tune your Ghanaian meal plan.";
-    }
-
-    private function pairingSuggestion(string $slug): ?string
-    {
-        return match (true) {
-            str_contains($slug, 'banku') => 'Pair with grilled tilapia and fresh pepper—not extra fried sides.',
-            str_contains($slug, 'fufu') => 'Light soup with kontomire or garden eggs boosts vitamins.',
-            str_contains($slug, 'jollof') => 'Add salad or coleslaw and grilled chicken for balance.',
-            str_contains($slug, 'waakye') => 'Boiled egg, spaghetti portion control, and shito on the side only.',
-            str_contains($slug, 'kenkey') => 'Grilled fish beats fried fish most days of the week.',
-            str_contains($slug, 'rice') && ! str_contains($slug, 'jollof') => 'Stew with kontomire or salad—half plate vegetables.',
-            default => null,
-        };
-    }
-
-    private function portionNote(string $slug, int $calories): ?string
-    {
-        if ($calories >= 800) {
-            return 'This looks like a large portion—next time, try serving starch and protein separately to control size.';
-        }
-        if (str_contains($slug, 'fufu') || str_contains($slug, 'banku')) {
-            return 'One medium ball of starch is a standard dietitian portion for most adults.';
-        }
-
-        return null;
+        return "Nice work logging $display. Consistent tracking is how we fine-tune your chop bar meal plan.";
     }
 }

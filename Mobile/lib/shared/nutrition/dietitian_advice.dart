@@ -1,3 +1,5 @@
+import 'ghanaian_meal_suggestions.dart';
+
 class DietitianRecommendation {
   const DietitianRecommendation({
     required this.category,
@@ -131,7 +133,7 @@ class DietitianAdvice {
         category: 'protein',
         title: 'Add protein next',
         detail:
-            'Try tilapia, beans stew (gobe), eggs, or chicken soup to close your protein gap.',
+            'Try banku and tilapia, waakye with egg and fish, or red-red with plantain.',
       ));
     }
 
@@ -148,22 +150,20 @@ class DietitianAdvice {
         category: 'calories',
         title: "Above today's target",
         detail:
-            'Go lighter at dinner—vegetable soup, grilled fish, or a smaller starch portion.',
+            'Go lighter at dinner—kenkey with grilled fish, light soup, or a smaller waakye portion.',
       ));
     }
 
-    DietitianNextMeal? nextMeal;
-    if (proteinGap > 20) {
-      nextMeal = const DietitianNextMeal(
-        suggestion: 'Grilled tilapia with kontomire stew',
-        reason: 'High protein, familiar Ghanaian plate, lighter on oil.',
-      );
-    } else if (mealsLoggedToday == 0) {
-      nextMeal = const DietitianNextMeal(
-        suggestion: 'Hausa koko with koose or boiled eggs',
-        reason: 'Light Ghanaian breakfast with steady protein.',
-      );
-    }
+    final next = GhanaianMealSuggestions.nextMeal(
+      mealsLoggedToday: mealsLoggedToday,
+      goal: goalText,
+      remainingKcal: remaining,
+      proteinGap: proteinGap,
+    );
+    final nextMeal = DietitianNextMeal(
+      suggestion: next.suggestion,
+      reason: next.reason,
+    );
 
     return DietitianAdvice(
       headline: "$name, your dietitian coach is here.",
@@ -175,7 +175,7 @@ class DietitianAdvice {
       hydrationTip:
           'Drink water steadily—especially with spicy stews, jollof, or waakye.',
       portionTip:
-          'Palm-sized protein, fist-sized starch, two hands of vegetables.',
+          'Palm-sized fish or meat, one ball of banku/fufu/kenkey, plenty of soup or stew.',
       source: 'rules',
     );
   }
@@ -212,18 +212,27 @@ class MealDietitianAdvice {
 
     if (slug.contains('jollof')) {
       insight =
-          'Jollof is energy-dense—pair with salad or grilled chicken and watch oily sides.';
-    } else if (slug.contains('banku') || slug.contains('fufu')) {
+          'Jollof is party food—pair with chicken or fish and salad, not eaten plain.';
+    } else if (slug.contains('banku')) {
       insight =
-          'One moderate ball of banku or fufu with lean soup or fish is a balanced portion.';
+          'Banku with okro stew or tilapia and shito—that is the chop people actually eat.';
+    } else if (slug.contains('fufu')) {
+      insight =
+          'Fufu with light soup or groundnut soup—one ball is the usual serving.';
+    } else if (slug.contains('kenkey')) {
+      insight =
+          'Kenkey and fried fish with shito is the classic evening plate.';
     } else if (slug.contains('waakye')) {
       insight =
-          'Waakye gives lasting energy—add egg or fish and go easy on extra gari.';
+          'Waakye chop: shito, gari, egg, plantain—pick your sides like at the vendor.';
     } else if (slug.contains('kelewele') || slug.contains('fried')) {
-      insight = 'Keep fried sides small; make protein and vegetables the main event.';
+      insight =
+          'Kelewele and fried plantain are side chops—pair with rice, jollof, or gobe.';
+    } else if (slug.contains('koko')) {
+      insight = 'Hausa koko goes with koose or bofrot—that is the breakfast pairing.';
     } else if (calories >= 700) {
       insight =
-          '$name is hearty—hydrate well and keep the next meal lighter on starch.';
+          '$name is a full chop bar portion—hydrate and go lighter on starch next time.';
     } else {
       insight =
           'Good logging $name. Consistent tracking helps me tune your Ghanaian meal plan.';
@@ -234,12 +243,7 @@ class MealDietitianAdvice {
       insight += ' For weight loss, enjoy fried treats occasionally.';
     }
 
-    String? pairing;
-    if (slug.contains('banku')) {
-      pairing = 'Grilled tilapia and fresh pepper beat extra fried sides.';
-    } else if (slug.contains('jollof')) {
-      pairing = 'Add salad and grilled chicken for balance.';
-    }
+    final pairing = GhanaianMealSuggestions.pairingForFood(slug);
 
     return MealDietitianAdvice(insight: insight, pairing: pairing);
   }

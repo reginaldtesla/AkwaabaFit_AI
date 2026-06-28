@@ -1785,8 +1785,9 @@ class DashboardScreen extends ConsumerWidget {
 
   Widget _buildDietitianCoachCard(BuildContext context, DashboardData data) {
     final advice = data.resolveDietitianAdvice();
-    const insightBg = slate900;
-    const insightIconBg = Color(0xFF334155);
+    const cardGreen = Color(0xFF166534);
+    const cardGreenMid = Color(0xFF1A5D1A);
+    const cardGreenSoft = Color(0xFF22C55E);
     final preview = advice.recommendations.isNotEmpty
         ? advice.recommendations.first.detail
         : advice.summary;
@@ -1805,12 +1806,23 @@ class DashboardScreen extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: insightBg,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFECFDF5),
+                Color(0xFFD1FAE5),
+                Color(0xFFBBF7D0),
+              ],
+            ),
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: cardGreenSoft.withValues(alpha: 0.35),
+            ),
             boxShadow: [
               BoxShadow(
-                color: insightBg.withValues(alpha: 0.28),
-                blurRadius: 15,
+                color: cardGreenMid.withValues(alpha: 0.14),
+                blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
             ],
@@ -1822,101 +1834,126 @@ class DashboardScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: insightIconBg,
-                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          cardGreenSoft,
+                          cardGreenMid,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cardGreenMid.withValues(alpha: 0.25),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: const Icon(
                       Icons.spa_outlined,
                       color: Colors.white,
-                      size: 24,
+                      size: 22,
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Your Dietitian',
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        if (advice.isAiPowered) ...[
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              'AI · Gemini',
-                              style: GoogleFonts.inter(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white.withValues(alpha: 0.9),
+                        Row(
+                          children: [
+                            Text(
+                              'Your Dietitian',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: cardGreen,
                               ),
                             ),
-                          ),
-                        ],
+                            if (advice.isAiPowered) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: cardGreenMid,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  'AI',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           advice.headline,
                           style: GoogleFonts.inter(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.95),
-                            height: 1.4,
+                            color: cardGreenMid.withValues(alpha: 0.9),
+                            height: 1.35,
                           ),
                         ),
                       ],
                     ),
                   ),
                   Icon(
-                    Icons.chevron_right,
-                    color: Colors.white.withValues(alpha: 0.7),
+                    Icons.chevron_right_rounded,
+                    color: cardGreen.withValues(alpha: 0.55),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Text(
                 preview,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.inter(
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: Colors.white.withValues(alpha: 0.88),
+                  color: const Color(0xFF14532D).withValues(alpha: 0.85),
                   height: 1.5,
                 ),
               ),
               if (advice.nextMeal != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withValues(alpha: 0.82),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: cardGreenSoft.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.restaurant_menu, color: Colors.white70, size: 16),
+                      Icon(
+                        Icons.restaurant_menu_rounded,
+                        color: cardGreenMid,
+                        size: 18,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'Next: ${advice.nextMeal!.suggestion}',
                           style: GoogleFonts.inter(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.92),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: cardGreen,
                           ),
                         ),
                       ),
@@ -1930,7 +1967,7 @@ class DashboardScreen extends ConsumerWidget {
                 style: GoogleFonts.inter(
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.65),
+                  color: cardGreen.withValues(alpha: 0.55),
                 ),
               ),
             ],
