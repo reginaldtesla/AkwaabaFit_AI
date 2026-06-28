@@ -229,7 +229,8 @@ class MealDietitianAdvice {
       insight =
           'Kelewele and fried plantain are side chops—pair with rice, jollof, or gobe.';
     } else if (slug.contains('koko')) {
-      insight = 'Hausa koko goes with koose or bofrot—that is the breakfast pairing.';
+      insight =
+          'Hausa koko fits morning or afternoon—with koose or bofrot, not as a late-night meal.';
     } else if (calories >= 700) {
       insight =
           '$name is a full chop bar portion—hydrate and go lighter on starch next time.';
