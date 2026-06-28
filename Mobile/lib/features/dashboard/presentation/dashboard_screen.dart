@@ -69,6 +69,8 @@ class DashboardData {
   final bool fromOfflineCache;
   /// Grams inferred from calorie-goal macro split when logged meals had no P/C/F data.
   final bool macrosEstimated;
+  final double? weightKg;
+  final double? heightCm;
   final DietitianAdvice? dietitianAdvice;
 
   DashboardData({
@@ -100,11 +102,34 @@ class DashboardData {
     required this.mealsLogged7Days,
     this.fromOfflineCache = false,
     this.macrosEstimated = false,
+    this.weightKg,
+    this.heightCm,
     this.dietitianAdvice,
   });
 
   DietitianAdvice resolveDietitianAdvice() {
-    if (dietitianAdvice != null) return dietitianAdvice!;
+    if (dietitianAdvice != null) {
+      if (dietitianAdvice!.bodyMetrics != null) return dietitianAdvice!;
+      return DietitianAdvice(
+        headline: dietitianAdvice!.headline,
+        summary: dietitianAdvice!.summary,
+        recommendations: dietitianAdvice!.recommendations,
+        nextMeal: dietitianAdvice!.nextMeal,
+        hydrationTip: dietitianAdvice!.hydrationTip,
+        portionTip: dietitianAdvice!.portionTip,
+        bodyMetrics: DietitianBodyMetrics.fromDashboardContext(
+          goal: goal,
+          weightKg: weightKg,
+          heightCm: heightCm,
+          todaySteps: currentSteps,
+          stepGoal: stepGoal,
+          burnedKcal: burnedKcal,
+          consumedKcal: consumedKcal,
+          dailyCaloriesTarget: dailyCaloriesTarget,
+        ),
+        source: dietitianAdvice!.source,
+      );
+    }
     return DietitianAdvice.fromDashboardContext(
       userName: userName,
       goal: goal,
@@ -114,6 +139,11 @@ class DashboardData {
       targetProteinG: targetProteinG,
       mealsLoggedToday: mealsLoggedToday ?? 0,
       mealsLogged7Days: mealsLogged7Days ?? 0,
+      burnedKcal: burnedKcal,
+      todaySteps: currentSteps,
+      stepGoal: stepGoal,
+      weightKg: weightKg,
+      heightCm: heightCm,
       alertTitle: alertTitle,
       alertMessage: alertMessage,
     );
@@ -217,6 +247,8 @@ class DashboardData {
       macrosEstimated: _dashboardJsonBool(
         json['macrosEstimated'] ?? json['macros_estimated'],
       ),
+      weightKg: _dashboardJsonDoubleOrNull(json['weightKg']),
+      heightCm: _dashboardJsonDoubleOrNull(json['heightCm']),
       dietitianAdvice: dietitianAdvice,
     );
   }
@@ -667,6 +699,12 @@ double _dashboardJsonDouble(dynamic value) {
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value) ?? 0.0;
   return 0.0;
+}
+
+double? _dashboardJsonDoubleOrNull(dynamic value) {
+  if (value == null) return null;
+  final parsed = _dashboardJsonDouble(value);
+  return parsed > 0 ? parsed : null;
 }
 
 bool _dashboardJsonBool(dynamic value) {

@@ -176,12 +176,17 @@ class DashboardController extends Controller
             todayMealNames: $todayMealNames,
             alertTitle: $alertTitle,
             alertMessage: $alertMessage,
+            todaySteps: $todaySteps,
+            stepGoal: $stepGoal,
+            burnedKcal: $burnedKcal,
         );
 
         return response()->json([
             'userName' => $user->name,
             'avatarUrl' => $avatarUrl,
             'goal' => $goal ?: null,
+            'weightKg' => $weightKg,
+            'heightCm' => $heightCm,
             'netKcal' => $netKcal,
             'consumedKcal' => $consumedKcal,
             'burnedKcal' => $burnedKcal,

@@ -36,6 +36,7 @@ class DietitianAdviceTest extends TestCase
                     'nextMeal',
                     'hydrationTip',
                     'portionTip',
+                    'bodyMetrics',
                 ],
             ]);
     }
@@ -104,9 +105,22 @@ class DietitianAdviceTest extends TestCase
             mealsLoggedToday: 1,
             mealsLogged7Days: 5,
             todayMealNames: ['Plain rice'],
+            todaySteps: 3200,
+            stepGoal: 10000,
+            burnedKcal: 128,
         );
 
         $this->assertNotEmpty($advice['recommendations']);
         $this->assertNotNull($advice['nextMeal']);
+        $this->assertArrayHasKey('bodyMetrics', $advice);
+        $this->assertSame(3200, $advice['bodyMetrics']['todaySteps']);
+        $this->assertSame(772, $advice['bodyMetrics']['netKcal']);
+    }
+
+    public function test_body_metrics_bmi_calculation(): void
+    {
+        $bmi = \App\Support\BodyMetrics::bmi(70.0, 170.0);
+        $this->assertNotNull($bmi);
+        $this->assertSame('Normal weight', \App\Support\BodyMetrics::category($bmi));
     }
 }

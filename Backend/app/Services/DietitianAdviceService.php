@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\BodyMetrics;
 use App\Support\GhanaianMealSuggestions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,7 @@ class DietitianAdviceService
      *   nextMeal: array{suggestion: string, reason: string}|null,
      *   hydrationTip: string|null,
      *   portionTip: string|null,
+     *   bodyMetrics: array<string, mixed>,
      *   source: string
      * }
      */
@@ -38,7 +40,26 @@ class DietitianAdviceService
         array $todayMealNames = [],
         ?string $alertTitle = null,
         ?string $alertMessage = null,
+        int $todaySteps = 0,
+        int $stepGoal = 0,
+        int $burnedKcal = 0,
     ): array {
+        $weightKg = is_numeric($user->weight) ? (float) $user->weight : null;
+        $heightCm = is_numeric($user->height) ? (float) $user->height : null;
+        $goal = trim((string) ($user->goal ?? ''));
+        $targetKcal = max(0, (int) ($targets['dailyCaloriesTarget'] ?? 0));
+
+        $bodyMetrics = BodyMetrics::snapshot(
+            weightKg: $weightKg,
+            heightCm: $heightCm,
+            goal: $goal,
+            todaySteps: $todaySteps,
+            stepGoal: $stepGoal,
+            burnedKcal: $burnedKcal,
+            consumedKcal: $consumedKcal,
+            dailyCaloriesTarget: $targetKcal,
+        );
+
         $rules = $this->ruleBasedDailyAdvice(
             $user,
             $consumedKcal,
@@ -51,6 +72,10 @@ class DietitianAdviceService
             $todayMealNames,
             $alertTitle,
             $alertMessage,
+            $todaySteps,
+            $stepGoal,
+            $burnedKcal,
+            $bodyMetrics,
         );
 
         $gemini = $this->tryGeminiDailyAdvice(
@@ -65,13 +90,23 @@ class DietitianAdviceService
             $todayMealNames,
             $alertTitle,
             $alertMessage,
+            $todaySteps,
+            $stepGoal,
+            $burnedKcal,
+            $bodyMetrics,
         );
 
         if ($gemini !== null) {
-            return array_merge($gemini, ['source' => 'gemini']);
+            return array_merge($gemini, [
+                'bodyMetrics' => $bodyMetrics,
+                'source' => 'gemini',
+            ]);
         }
 
-        return array_merge($rules, ['source' => 'rules']);
+        return array_merge($rules, [
+            'bodyMetrics' => $bodyMetrics,
+            'source' => 'rules',
+        ]);
     }
 
     /**
@@ -145,6 +180,10 @@ class DietitianAdviceService
         array $todayMealNames,
         ?string $alertTitle,
         ?string $alertMessage,
+        int $todaySteps,
+        int $stepGoal,
+        int $burnedKcal,
+        array $bodyMetrics,
     ): array {
         $name = $this->firstName((string) $user->name);
         $goal = trim((string) ($user->goal ?? ''));
@@ -153,14 +192,26 @@ class DietitianAdviceService
         $targetC = max(0, (int) ($targets['carbsG'] ?? 0));
         $targetF = max(0, (int) ($targets['fatG'] ?? 0));
 
-        $remainingKcal = $targetKcal > 0 ? $targetKcal - $consumedKcal : 0;
+        $netKcal = max(0, $consumedKcal - max(0, $burnedKcal));
+        $remainingKcal = $targetKcal > 0 ? $targetKcal - $netKcal : 0;
         $proteinGap = $targetP > 0 ? $targetP - $consumedProteinG : 0;
         $carbsGap = $targetC > 0 ? $targetC - $consumedCarbsG : 0;
         $fatGap = $targetF > 0 ? $targetF - $consumedFatG : 0;
+        $bmi = is_numeric($bodyMetrics['bmi'] ?? null) ? (float) $bodyMetrics['bmi'] : null;
 
         $recommendations = [];
         $headline = "Let's keep your nutrition steady today, $name.";
-        $summary = "I'm reviewing your meals and targets to give practical, Ghana-friendly guidance—not strict dieting.";
+        $summary = "I'm reviewing your meals, steps, and targets to give practical Ghana-friendly guidance—not strict dieting.";
+
+        $bmiLine = BodyMetrics::bmiCoachingLine($bmi, $goal);
+        if ($bmiLine !== null) {
+            $recommendations[] = [
+                'category' => 'body',
+                'title' => $bmi !== null ? 'BMI '.number_format($bmi, 1).' — '.($bodyMetrics['bmiCategory'] ?? '')
+                    : 'Body profile',
+                'detail' => $bmiLine,
+            ];
+        }
 
         if ($alertTitle && $alertMessage && ! str_contains(strtolower($alertTitle), 'no alert')) {
             $recommendations[] = [
@@ -196,11 +247,15 @@ class DietitianAdviceService
         }
 
         if ($targetKcal > 0) {
+            $burnedNote = $burnedKcal > 0
+                ? " Your steps burned about {$burnedKcal} kcal today, so I'm using net intake (food minus activity)."
+                : '';
+
             if ($remainingKcal > 400) {
                 $recommendations[] = [
                     'category' => 'calories',
                     'title' => 'Room left in your budget',
-                    'detail' => "About $remainingKcal kcal remaining. ".$this->goalCalorieHint($goal, 'remaining'),
+                    'detail' => "About $remainingKcal kcal remaining after activity. ".$this->goalCalorieHint($goal, 'remaining').$burnedNote,
                 ];
                 $headline = $goal === 'Lose weight'
                     ? "$name, you still have calorie room—use it wisely."
@@ -210,14 +265,37 @@ class DietitianAdviceService
                 $recommendations[] = [
                     'category' => 'calories',
                     'title' => "Above today's target",
-                    'detail' => "You're about $over kcal over target. Choose a lighter dinner—vegetable soup, grilled fish, or a smaller starch portion.",
+                    'detail' => "You're about $over kcal over target (net of steps). Choose a lighter dinner—kenkey with grilled fish, light soup, or a smaller waakye portion.$burnedNote",
                 ];
                 $headline = "$name, let's lighten the next meal.";
             } else {
                 $recommendations[] = [
                     'category' => 'calories',
                     'title' => 'On track with calories',
-                    'detail' => 'Your intake is close to target. Maintain steady portions at the next meal.',
+                    'detail' => 'Your net intake is close to target after food and steps. Maintain steady portions at the next meal.'.$burnedNote,
+                ];
+            }
+        }
+
+        if ($stepGoal > 0) {
+            $stepsPct = (int) round(($todaySteps / max(1, $stepGoal)) * 100);
+            if ($todaySteps >= $stepGoal) {
+                $recommendations[] = [
+                    'category' => 'activity',
+                    'title' => 'Step goal reached',
+                    'detail' => "You've hit {$todaySteps} steps—that activity earns you a little extra calorie room and supports your {$goal} goal.",
+                ];
+            } elseif ($stepsPct < 50) {
+                $recommendations[] = [
+                    'category' => 'activity',
+                    'title' => 'Move a bit more today',
+                    'detail' => "{$todaySteps} of {$stepGoal} steps so far. A short walk before supper helps balance chop bar meals and burns extra energy.",
+                ];
+            } else {
+                $recommendations[] = [
+                    'category' => 'activity',
+                    'title' => 'Steps progressing',
+                    'detail' => "{$todaySteps} of {$stepGoal} steps ({$stepsPct}%). Keep moving—activity shapes how much room you have for the next meal.",
                 ];
             }
         }
@@ -267,7 +345,7 @@ class DietitianAdviceService
             proteinGap: $proteinGap,
         );
         $hydration = 'Aim for 6–8 glasses of water today. Extra important with jollof, waakye, or spicy stews.';
-        $portionTip = 'Use your palm for protein, fist for starches, and two cupped hands for vegetables when plating Ghanaian meals.';
+        $portionTip = BodyMetrics::portionHint($bmi, $goal);
 
         if ($goal === 'Lose weight') {
             $summary = "As your dietitian coach, I'm focusing on portion control, lean protein, and fewer fried sides while keeping familiar Ghanaian foods.";
@@ -338,6 +416,10 @@ class DietitianAdviceService
         array $todayMealNames,
         ?string $alertTitle,
         ?string $alertMessage,
+        int $todaySteps,
+        int $stepGoal,
+        int $burnedKcal,
+        array $bodyMetrics,
     ): ?array {
         $context = [
             'client' => [
@@ -348,13 +430,20 @@ class DietitianAdviceService
                 'weight_kg' => $user->weight,
                 'height_cm' => $user->height,
                 'activity_level' => $user->activity_level,
+                'bmi' => $bodyMetrics['bmi'] ?? null,
+                'bmi_category' => $bodyMetrics['bmiCategory'] ?? null,
             ],
             'today' => [
                 'consumed_kcal' => $consumedKcal,
+                'burned_kcal_from_steps' => $burnedKcal,
+                'net_kcal' => $bodyMetrics['netKcal'] ?? max(0, $consumedKcal - $burnedKcal),
+                'steps' => $todaySteps,
+                'step_goal' => $stepGoal,
                 'consumed_protein_g' => $consumedProteinG,
                 'consumed_carbs_g' => $consumedCarbsG,
                 'consumed_fat_g' => $consumedFatG,
                 'target_kcal' => (int) ($targets['dailyCaloriesTarget'] ?? 0),
+                'net_remaining_kcal' => $bodyMetrics['netRemainingKcal'] ?? null,
                 'target_protein_g' => (int) ($targets['proteinG'] ?? 0),
                 'target_carbs_g' => (int) ($targets['carbsG'] ?? 0),
                 'target_fat_g' => (int) ($targets['fatG'] ?? 0),
@@ -369,7 +458,7 @@ class DietitianAdviceService
 
         $prompt = 'You are a warm, professional registered dietitian coaching a Ghanaian client through a mobile app. '
             .implode(' ', GhanaianMealSuggestions::geminiAuthenticityRules()).' '
-            .'Be practical—not preachy. No medical diagnosis. JSON only with this shape: '
+            .'Factor in BMI, goal, steps burned, and net calories (food minus step burn). Be practical—not preachy. No medical diagnosis. JSON only with this shape: '
             .'{"headline":"...","summary":"2 sentences max","recommendations":[{"category":"habit|calories|protein|food|environment","title":"...","detail":"..."}],'
             .'"nextMeal":{"suggestion":"Ghanaian dish","reason":"..."},"hydrationTip":"...","portionTip":"..."}. '
             .'Up to 5 recommendations. nextMeal can be null if unclear. Client data: '
