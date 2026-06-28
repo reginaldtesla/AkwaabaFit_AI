@@ -374,7 +374,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'See outdoor guidance or book Tele‑Dietetics.',
+                  'See outdoor guidance and dietitian tips for your meals.',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     height: 1.4,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DailyStepLog;
 use App\Models\MealLog;
+use App\Services\DietitianAdviceService;
 use App\Services\OpenWeatherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -101,6 +102,7 @@ class DashboardController extends Controller
         $consumedFatG = 0;
         $mealsLoggedToday = 0;
         $mealsLogged7Days = 0;
+        $todayMealNames = [];
         if (Schema::hasTable('meal_logs')) {
             $todayMealsQuery = MealLog::query()->where('user_id', $user->id);
             if ($mealStart !== null && $mealEndExcl !== null && $mealEndExcl->gt($mealStart)) {
@@ -117,6 +119,14 @@ class DashboardController extends Controller
             $consumedFatG = (int) (clone $todayMealsQuery)->sum(DB::raw('COALESCE(fat_g, 0)'));
 
             $mealsLoggedToday = (int) (clone $todayMealsQuery)->count();
+
+            $todayMealNames = (clone $todayMealsQuery)
+                ->orderByDesc('eaten_at')
+                ->limit(8)
+                ->pluck('name')
+                ->map(fn ($n) => (string) $n)
+                ->values()
+                ->all();
 
             $mealsLogged7Days = (int) MealLog::query()
                 ->where('user_id', $user->id)
@@ -152,6 +162,20 @@ class DashboardController extends Controller
             pm10: $air['pm10'] ?? null,
             weatherMain: $air['weatherMain'] ?? null,
             weatherDescription: $air['weatherDescription'] ?? null,
+        );
+
+        $dietitianAdvice = app(DietitianAdviceService::class)->dailyAdvice(
+            user: $user,
+            consumedKcal: $consumedKcal,
+            consumedProteinG: $consumedProteinG,
+            consumedCarbsG: $consumedCarbsG,
+            consumedFatG: $consumedFatG,
+            targets: $targets,
+            mealsLoggedToday: $mealsLoggedToday,
+            mealsLogged7Days: $mealsLogged7Days,
+            todayMealNames: $todayMealNames,
+            alertTitle: $alertTitle,
+            alertMessage: $alertMessage,
         );
 
         return response()->json([
@@ -198,6 +222,7 @@ class DashboardController extends Controller
             ],
             'mealsLoggedToday' => $mealsLoggedToday,
             'mealsLogged7Days' => $mealsLogged7Days,
+            'dietitianAdvice' => $dietitianAdvice,
             'calories' => max(0, $netKcal),
             'activeMinutes' => (int) round($todaySteps / 120),
         ]);

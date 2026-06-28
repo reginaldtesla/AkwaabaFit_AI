@@ -292,21 +292,26 @@ flutter pub get
 
 | Scenario | `API_BASE_URL` example |
 |----------|-------------------------|
-| Android **emulator** on same PC as API | `http://10.0.2.2:8080/api` |
+| **Production server** (default in app) | `https://api.tesnet.xyz/api` |
+| Android **emulator** on same PC as local API | `http://10.0.2.2:8080/api` |
 | **Physical phone** on same Wi‑Fi as PC | `http://YOUR-PC-LAN-IP:8080/api` (find IP with `ipconfig` on Windows) |
 | **Tunnel** (ngrok, etc.) | `https://YOUR-SUBDOMAIN.ngrok-free.dev/api` |
 
-Run the app (replace with your URL):
+Run the app — **production** (no extra flag needed if default is set):
+
+```bash
+flutter run
+```
+
+Run against **local** Laravel on the emulator:
 
 ```bash
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api
 ```
 
-For a physical device on Wi‑Fi, allow the API port through Windows Firewall when prompted. **MySQL must be running** on the host machine or login and other API calls will fail.
+For a physical device on Wi‑Fi hitting your PC, allow the API port through Windows Firewall. **MySQL must be running** locally or login will fail.
 
-The app sends an ngrok skip header for free-tier tunnels and can rewrite localhost storage URLs to match your configured API host.
-
-Default API URL in code (when no `--dart-define` is passed) is set in `Mobile/lib/shared/config/app_config.dart` — change it to your PC’s LAN IP for physical-device testing.
+Default API URL is in `Mobile/lib/shared/config/app_config.dart` (currently **https://api.tesnet.xyz/api**).
 
 **If build fails after USB copy:**
 
@@ -406,6 +411,29 @@ After you publish **1.0.1** to the store, set `APP_ANDROID_LATEST_VERSION=1.0.1`
 ---
 
 ## Deployment notes
+
+**Production API:** [https://api.tesnet.xyz](https://api.tesnet.xyz/) — mobile app default is `https://api.tesnet.xyz/api`.
+
+When you deploy newer code from this repo to that server, on the server run:
+
+```bash
+composer install --no-dev
+php artisan migrate --force
+php artisan config:cache
+php artisan storage:link
+```
+
+Set in the server `.env` (not committed):
+
+| Variable | Example |
+|----------|---------|
+| `APP_URL` | `https://api.tesnet.xyz` |
+| `APP_DEBUG` | `false` |
+| `GEMINI_API_KEY` | from [Google AI Studio](https://aistudio.google.com/apikey) |
+| `HUGGINGFACE_API_TOKEN` | from [Hugging Face](https://huggingface.co/settings/tokens) |
+| `OPENWEATHER_API_KEY` | optional, for dashboard weather |
+
+Until you deploy the latest backend, the hosted site may still be the **older GitHub version** (no Gemini dietitian, old payment routes removed locally only, etc.). Local changes only apply on the server after you pull/upload and migrate.
 
 The app is suitable for **beta / pilot** deployment when:
 

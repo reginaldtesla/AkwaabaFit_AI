@@ -98,4 +98,63 @@ class FoodScanApiService {
       detections: detections,
     );
   }
+
+  Future<({
+    String insight,
+    String? pairing,
+    String? portion,
+    String source,
+  })> fetchMealAdvice({
+    required String name,
+    String? className,
+    int calories = 0,
+    int proteinG = 0,
+    int carbsG = 0,
+    int fatG = 0,
+  }) async {
+    final token = await _storage.read(key: 'sanctum_token');
+    if (token == null || token.isEmpty) {
+      throw StateError('Sign in for dietitian advice.');
+    }
+
+    final resp = await _dio.post(
+      '/nutrition/advice/meal',
+      data: {
+        'name': name,
+        if (className != null && className.isNotEmpty) 'class_name': className,
+        'calories': calories,
+        'protein_g': proteinG,
+        'carbs_g': carbsG,
+        'fat_g': fatG,
+      },
+      options: Options(
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+
+    final raw = resp.data;
+    if (raw is! Map) {
+      throw StateError('Unexpected dietitian advice response.');
+    }
+    final map = raw.map((k, v) => MapEntry(k.toString(), v));
+    if (map['status'] != 'success') {
+      throw StateError(map['message']?.toString() ?? 'Dietitian advice failed.');
+    }
+
+    final advice = map['advice'];
+    if (advice is! Map) {
+      throw StateError('Missing advice payload.');
+    }
+    final a = advice.map((k, v) => MapEntry(k.toString(), v));
+
+    return (
+      insight: (a['insight'] ?? '').toString(),
+      pairing: a['pairing']?.toString(),
+      portion: a['portion']?.toString(),
+      source: (a['source'] ?? 'rules').toString(),
+    );
+  }
 }

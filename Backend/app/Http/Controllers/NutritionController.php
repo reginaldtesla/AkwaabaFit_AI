@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\FoodNutritionItem;
 use App\Models\MealLog;
+use App\Services\DietitianAdviceService;
 use App\Services\FoodScanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -145,7 +147,7 @@ class NutritionController extends Controller
         ]);
     }
 
-    public function log(Request $request): JsonResponse
+    public function log(Request $request, DietitianAdviceService $dietitian): JsonResponse
     {
         $user = $request->user();
 
@@ -175,6 +177,29 @@ class NutritionController extends Controller
             'meta' => ['nullable', 'array'],
         ]);
 
+        $insight = $data['insight_message'] ?? null;
+        if (! is_string($insight) || trim($insight) === '') {
+            $className = null;
+            $meta = $data['meta'] ?? null;
+            if (is_array($meta)) {
+                $className = $meta['class_name'] ?? $meta['className'] ?? null;
+            }
+            $gaps = $this->todayNutritionGaps($user);
+            $mealAdvice = $dietitian->mealAdvice(
+                foodName: $data['name'],
+                className: is_string($className) ? $className : null,
+                calories: (int) ($data['calories'] ?? 0),
+                proteinG: (int) ($data['protein_g'] ?? 0),
+                carbsG: (int) ($data['carbs_g'] ?? 0),
+                fatG: (int) ($data['fat_g'] ?? 0),
+                goal: (string) ($user->goal ?? ''),
+                remainingKcal: $gaps['remaining_kcal'],
+                proteinGap: $gaps['protein_gap'],
+                user: $user,
+            );
+            $insight = $mealAdvice['insight'];
+        }
+
         $meal = MealLog::create([
             'user_id' => $user->id,
             'eaten_at' => isset($data['eaten_at']) ? Carbon::parse($data['eaten_at']) : now(),
@@ -185,7 +210,7 @@ class NutritionController extends Controller
             'carbs_g' => $data['carbs_g'] ?? null,
             'fat_g' => $data['fat_g'] ?? null,
             'safety_status' => $data['safety_status'] ?? null,
-            'insight_message' => $data['insight_message'] ?? null,
+            'insight_message' => $insight,
             'image_url' => $data['image_url'] ?? null,
             'source' => $data['source'] ?? 'scan',
             'meta' => $data['meta'] ?? null,
@@ -195,5 +220,61 @@ class NutritionController extends Controller
             'status' => 'success',
             'meal' => $meal,
         ], 201);
+    }
+
+    /**
+     * Dietitian-style coaching for a meal before or after logging (mobile scan card).
+     */
+    public function mealAdvice(Request $request, DietitianAdviceService $dietitian): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'class_name' => ['nullable', 'string', 'max:120'],
+            'calories' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'protein_g' => ['nullable', 'integer', 'min:0', 'max:500'],
+            'carbs_g' => ['nullable', 'integer', 'min:0', 'max:800'],
+            'fat_g' => ['nullable', 'integer', 'min:0', 'max:300'],
+        ]);
+
+        $user = $request->user();
+        $gaps = $this->todayNutritionGaps($user);
+        $advice = $dietitian->mealAdvice(
+            foodName: $data['name'],
+            className: $data['class_name'] ?? null,
+            calories: (int) ($data['calories'] ?? 0),
+            proteinG: (int) ($data['protein_g'] ?? 0),
+            carbsG: (int) ($data['carbs_g'] ?? 0),
+            fatG: (int) ($data['fat_g'] ?? 0),
+            goal: (string) ($user->goal ?? ''),
+            remainingKcal: $gaps['remaining_kcal'],
+            proteinGap: $gaps['protein_gap'],
+            user: $user,
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'advice' => $advice,
+        ]);
+    }
+
+    /**
+     * @return array{remaining_kcal: int, protein_gap: int}
+     */
+    private function todayNutritionGaps(\App\Models\User $user): array
+    {
+        $today = MealLog::query()
+            ->where('user_id', $user->id)
+            ->whereDate('eaten_at', today());
+
+        $consumedKcal = (int) (clone $today)->sum('calories');
+        $consumedProtein = (int) (clone $today)->sum(DB::raw('COALESCE(protein_g, 0)'));
+
+        $targetKcal = is_numeric($user->daily_calories_target) ? (int) $user->daily_calories_target : 0;
+        $targetProtein = is_numeric($user->weight) ? (int) round((float) $user->weight * 1.4) : 0;
+
+        return [
+            'remaining_kcal' => $targetKcal > 0 ? $targetKcal - $consumedKcal : 0,
+            'protein_gap' => $targetProtein > 0 ? $targetProtein - $consumedProtein : 0,
+        ];
     }
 }

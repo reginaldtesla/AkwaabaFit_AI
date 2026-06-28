@@ -10,7 +10,10 @@ import 'package:mobile/shared/connectivity/connectivity_utils.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
+import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
+import 'package:mobile/shared/nutrition/dietitian_advice.dart';
+import 'package:mobile/shared/nutrition/nutrition_refresh.dart';
 import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
@@ -66,6 +69,7 @@ class DashboardData {
   final bool fromOfflineCache;
   /// Grams inferred from calorie-goal macro split when logged meals had no P/C/F data.
   final bool macrosEstimated;
+  final DietitianAdvice? dietitianAdvice;
 
   DashboardData({
     required this.userName,
@@ -96,7 +100,24 @@ class DashboardData {
     required this.mealsLogged7Days,
     this.fromOfflineCache = false,
     this.macrosEstimated = false,
+    this.dietitianAdvice,
   });
+
+  DietitianAdvice resolveDietitianAdvice() {
+    if (dietitianAdvice != null) return dietitianAdvice!;
+    return DietitianAdvice.fromDashboardContext(
+      userName: userName,
+      goal: goal,
+      dailyCaloriesTarget: dailyCaloriesTarget,
+      consumedKcal: consumedKcal,
+      proteinG: proteinG,
+      targetProteinG: targetProteinG,
+      mealsLoggedToday: mealsLoggedToday ?? 0,
+      mealsLogged7Days: mealsLogged7Days ?? 0,
+      alertTitle: alertTitle,
+      alertMessage: alertMessage,
+    );
+  }
 
   DashboardData copyWith({
     int? currentSteps,
@@ -144,6 +165,13 @@ class DashboardData {
     final airQuality = _dashboardJsonMap(json['airQuality']);
     final workoutPlan = _dashboardJsonMap(json['workoutPlan']);
     final weather = _dashboardJsonMap(json['weather']);
+    final dietRaw = json['dietitianAdvice'];
+    DietitianAdvice? dietitianAdvice;
+    if (dietRaw is Map) {
+      dietitianAdvice = DietitianAdvice.fromJson(
+        dietRaw.map((k, dynamic v) => MapEntry(k.toString(), v)),
+      );
+    }
 
     return DashboardData(
       userName: (json['userName'] ?? '').toString(),
@@ -189,6 +217,7 @@ class DashboardData {
       macrosEstimated: _dashboardJsonBool(
         json['macrosEstimated'] ?? json['macros_estimated'],
       ),
+      dietitianAdvice: dietitianAdvice,
     );
   }
 
@@ -664,6 +693,7 @@ Map<String, String> _dashboardLocalDayQueryParams() {
 
 // In production, this will use Dio to fetch from Laravel `GET /api/dashboard`.
 final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
+  ref.watch(nutritionDashboardRefreshProvider);
   const storage = FlutterSecureStorage();
   final token = await readSanctumToken(storage: storage);
   if (token == null) {
@@ -996,7 +1026,7 @@ class DashboardScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             _buildWeatherStepsCard(data),
             const SizedBox(height: 16),
-            _buildAIInsightCard(context, data),
+            _buildDietitianCoachCard(context, data),
             ],
           ),
         ),
@@ -1753,173 +1783,161 @@ class DashboardScreen extends ConsumerWidget {
     return '${v.toStringAsFixed(0)}k';
   }
 
-  Widget _buildAIInsightCard(BuildContext context, DashboardData data) {
-    final msg = _buildPersonalizedInsight(data);
+  Widget _buildDietitianCoachCard(BuildContext context, DashboardData data) {
+    final advice = data.resolveDietitianAdvice();
     const insightBg = slate900;
     const insightIconBg = Color(0xFF334155);
+    final preview = advice.recommendations.isNotEmpty
+        ? advice.recommendations.first.detail
+        : advice.summary;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: insightBg,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: insightBg.withValues(alpha: 0.28),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: insightIconBg,
-              borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => DietitianCoachScreen(advice: advice),
             ),
-            child: const Icon(Icons.psychology, color: Colors.white, size: 24),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: insightBg,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: insightBg.withValues(alpha: 0.28),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Wellness Insight',
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: insightIconBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.spa_outlined,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Your Dietitian',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        if (advice.isAiPowered) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'AI · Gemini',
+                              style: GoogleFonts.inter(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        Text(
+                          advice.headline,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.95),
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                preview,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.88),
+                  height: 1.5,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  msg,
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    height: 1.5,
+              ),
+              if (advice.nextMeal != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.restaurant_menu, color: Colors.white70, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Next: ${advice.nextMeal!.suggestion}',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.92),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'Tap for full meal plan & tips',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withValues(alpha: 0.65),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
-  }
-
-  String _buildPersonalizedInsight(DashboardData data) {
-    final stepsGoal = data.stepGoal <= 0 ? 1 : data.stepGoal;
-    final stepsPct = (data.currentSteps / stepsGoal).clamp(0.0, 1.5);
-
-    final isPoorAir = (data.airQualityAqi ?? 0) >= 4;
-    final isHighHeat = data.tempCelsius >= 32.0;
-
-    final target = data.dailyCaloriesTarget;
-    final consumed = data.consumedKcal;
-    final burned = data.burnedKcal;
-    final net = data.netKcal;
-    final goal = (data.goal ?? '').trim();
-    final mealsToday = data.mealsLoggedToday ?? 0;
-    final meals7 = data.mealsLogged7Days ?? 0;
-    final preferredTime = (data.workoutPreferredTime ?? '').trim();
-    final daysPerWeek = data.workoutDaysPerWeek;
-
-    final alertTitle = (data.alertTitle ?? '').trim();
-    final alertMessage = (data.alertMessage ?? '').trim();
-
-    String name = data.userName.trim().split(' ').first;
-    if (name.isEmpty) name = 'You';
-
-    // Template rotation (stable per user/day).
-    final seed = '${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}|$name';
-    final variant = seed.hashCode.abs() % 3;
-
-    // Priority 0: backend alert text when present (already localized to weather/air).
-    if (alertTitle.isNotEmpty && alertMessage.isNotEmpty) {
-      return variant == 0
-          ? '$name: $alertTitle — $alertMessage'
-          : variant == 1
-              ? '$alertTitle for $name. $alertMessage'
-              : '$name, quick heads‑up: $alertMessage';
-    }
-
-    // Priority 1: environment
-    if (isPoorAir) {
-      return '$name, air quality is poor today (Harmattan conditions). Keep workouts indoors and take it easier if your breathing feels irritated.';
-    }
-    if (isHighHeat) {
-      return '$name, it’s hot outside (${data.tempCelsius.toInt()}°C). Prefer shade, shorter outings, and low-intensity movement today.';
-    }
-    if (StrideWeatherGuidance.discouragesOutdoorWalk(data.weatherMain)) {
-      final storm = StrideWeatherGuidance.isStorm(data.weatherMain);
-      return storm
-          ? '$name, storms today — stay indoors. Indoor steps still count: march in place, use stairs, or light cardio at home.'
-          : '$name, it’s rainy today — you don’t have to go outside. Indoor steps count the same; try home pacing or stairs for ~12 minutes.';
-    }
-
-    // Priority 2: steps gaps
-    if (stepsPct < 0.45) {
-      return '$name, you’re at ${(stepsPct * 100).round()}% of your steps goal. Try a 12-minute brisk walk this evening to close the gap.';
-    }
-
-    // Priority 2.5: consistency (meals logged)
-    if (mealsToday >= 2) {
-      final targetP = data.targetProteinG > 0
-          ? 'Keep the next meal protein-forward to match your target (P ${data.targetProteinG}g).'
-          : 'Keep your next meal balanced and protein-aware.';
-      return variant == 0
-          ? '$name, nice consistency—$mealsToday meals logged today. $targetP'
-          : variant == 1
-              ? '$name, you’ve logged $mealsToday meals today (great). Stay steady and finish the day with a short walk.'
-              : '$name, good job logging meals today. That consistency makes your targets much more accurate.';
-    }
-    if (mealsToday == 0 && meals7 > 0) {
-      return '$name, you’ve logged $meals7 meals this week—log your next meal and I’ll tune your insight more precisely today.';
-    }
-
-    // Priority 3: calorie alignment (only if target is known)
-    if (target > 0) {
-      final remaining = target - consumed;
-      if (remaining > 450) {
-        final goalHint = goal.isEmpty
-            ? 'Prioritize protein + fiber'
-            : goal == 'Lose weight'
-                ? 'Keep it protein + fiber-heavy'
-                : goal == 'Gain weight'
-                    ? 'Add a balanced snack'
-                    : 'Stay balanced';
-        final macroTargetsSuffix = data.targetProteinG > 0 &&
-                data.targetCarbsG >= 0 &&
-                data.targetFatG >= 0
-            ? ' (macro targets: P ${data.targetProteinG}g • C ${data.targetCarbsG}g • F ${data.targetFatG}g).'
-            : '';
-        return '$name, you have about $remaining kcal left toward your target. $goalHint$macroTargetsSuffix';
-      }
-      if (remaining < -250) {
-        return '$name, you’re above your target by ${remaining.abs()} kcal. A light walk (and a lighter dinner) can bring your net calories back in range.';
-      }
-    }
-
-    // Priority 4: workout preference reminder
-    if (preferredTime.isNotEmpty || daysPerWeek != null) {
-      final d = daysPerWeek == null ? '' : '$daysPerWeek days/week';
-      final t = preferredTime.isEmpty ? '' : preferredTime;
-      final sep = (d.isNotEmpty && t.isNotEmpty) ? ' • ' : '';
-      final plan = (d + sep + t).trim();
-      if (plan.isNotEmpty) {
-        return '$name, keep your plan simple today: $plan. Even 15 minutes counts—consistency beats intensity.';
-      }
-    }
-
-    // Default: positive reinforcement with today’s net.
-    final sign = net >= 0 ? '+' : '-';
-    return '$name, you’re on a good track today. Net calories: $sign${net.abs()} kcal (burned ~$burned kcal from steps). Keep the same rhythm to finish strong.';
   }
 
   BoxDecoration _cardDecoration() {

@@ -1,12 +1,15 @@
 class AppConfig {
-  /// Configure per environment using:
-  /// `flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api` (Android emulator)
+  /// API base URL — set at build/run time with `--dart-define=API_BASE_URL=...`
   ///
-  /// Realtime: the API exposes `GET /broadcasting/client-config` (auth) for Laravel Reverb / Echo.
-  /// The mobile app uses a fast `messages/delta` poll; a native Reverb client needs a host-capable Pusher SDK.
+  /// **Production (hosted server):** default below — [https://api.tesnet.xyz](https://api.tesnet.xyz/)
+  /// **Android emulator + local Laravel:** `http://10.0.2.2:8080/api`
+  /// **Physical phone on same Wi‑Fi as PC:** `http://YOUR-PC-LAN-IP:8080/api`
+  ///
+  /// Example:
+  /// `flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api`
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.88.205:8080/api',
+    defaultValue: 'https://api.tesnet.xyz/api',
   );
 
   /// Same host as [apiBaseUrl], without `/api`.

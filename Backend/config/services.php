@@ -77,4 +77,11 @@ return [
         'gemini_model' => env('FOOD_SCAN_GEMINI_MODEL', 'gemini-2.5-flash'),
     ],
 
+    /*
+    | Virtual dietitian (Gemini + rule fallback). Reuses GEMINI_API_KEY from food_scan.
+    */
+    'dietitian' => [
+        'gemini_timeout' => (int) env('DIETITIAN_GEMINI_TIMEOUT', 45),
+    ],
+
 ];

@@ -11,6 +11,8 @@ import 'package:mobile/features/food_scan/data/food_scan_provider.dart';
 import 'package:mobile/features/food_scan/data/hybrid_nutrition_provider.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
+import 'package:mobile/shared/nutrition/dietitian_advice.dart';
+import 'package:mobile/shared/nutrition/nutrition_refresh.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 
 class FoodScanResult {
@@ -34,6 +36,9 @@ class FoodScanResult {
     this.isRefiningNutrition = false,
     this.nutritionSource = 'bundled',
     this.isGenericFallback = false,
+    this.dietitianInsight = '',
+    this.dietitianPairing,
+    this.dietitianSource = 'rules',
   });
 
   final String name;
@@ -55,6 +60,9 @@ class FoodScanResult {
   final bool isRefiningNutrition;
   final String nutritionSource;
   final bool isGenericFallback;
+  final String dietitianInsight;
+  final String? dietitianPairing;
+  final String dietitianSource;
 
   FoodScanResult copyWith({
     bool? mealSaved,
@@ -65,6 +73,9 @@ class FoodScanResult {
     List<String>? selectedClassNames,
     String? portionLabel,
     List<String>? alternateLabels,
+    String? dietitianInsight,
+    String? dietitianPairing,
+    String? dietitianSource,
   }) {
     return FoodScanResult(
       name: name,
@@ -86,6 +97,9 @@ class FoodScanResult {
       isRefiningNutrition: isRefiningNutrition ?? this.isRefiningNutrition,
       nutritionSource: nutritionSource ?? this.nutritionSource,
       isGenericFallback: isGenericFallback ?? this.isGenericFallback,
+      dietitianInsight: dietitianInsight ?? this.dietitianInsight,
+      dietitianPairing: dietitianPairing ?? this.dietitianPairing,
+      dietitianSource: dietitianSource ?? this.dietitianSource,
     );
   }
 }
@@ -209,6 +223,38 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
     state = AsyncValue.data(
       result.copyWith(isRefiningNutrition: false),
     );
+
+    await _enrichWithDietitianAdvice();
+  }
+
+  Future<void> _enrichWithDietitianAdvice() async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    try {
+      final api = ref.read(foodScanApiProvider);
+      final primaryClass = current.selectedClassNames.isNotEmpty
+          ? current.selectedClassNames.first
+          : null;
+      final advice = await api.fetchMealAdvice(
+        name: current.name,
+        className: primaryClass,
+        calories: current.calories,
+        proteinG: current.proteinG,
+        carbsG: current.carbsG,
+        fatG: current.fatG,
+      );
+      if (advice.insight.trim().isEmpty) return;
+      state = AsyncValue.data(
+        current.copyWith(
+          dietitianInsight: advice.insight,
+          dietitianPairing: advice.pairing,
+          dietitianSource: advice.source,
+        ),
+      );
+    } catch (_) {
+      // Keep rule-based tip from _aggregate when Gemini is unavailable.
+    }
   }
 
   void toggleItem(String className) {
@@ -246,6 +292,7 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
       final repo = ref.read(nutritionRepositoryProvider);
       await repo.logMeal(_mealPayload(current));
       ref.invalidate(nutritionHistoryProvider);
+      bumpNutritionDashboardRefresh(ref);
       state = AsyncValue.data(
         current.copyWith(mealSaved: true, isRefiningNutrition: false),
       );
@@ -293,6 +340,12 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
             ? 'cache'
             : 'bundled';
 
+    final mealAdvice = MealDietitianAdvice.forFood(
+      name: name,
+      className: primary.className,
+      calories: calories,
+    );
+
     return FoodScanResult(
       name: name,
       calories: calories,
@@ -312,6 +365,9 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
       imagePath: imagePath,
       nutritionSource: source,
       isGenericFallback: chosen.any((it) => it.nutrition.isGenericFallback),
+      dietitianInsight: mealAdvice.insight,
+      dietitianPairing: mealAdvice.pairing,
+      dietitianSource: 'rules',
     );
   }
 
@@ -325,6 +381,7 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
       'carbs_g': r.carbsG,
       'fat_g': r.fatG,
       'safety_status': r.safetyStatus,
+      'insight_message': r.dietitianInsight,
       'source': 'scan',
       'meta': {
         'iron_mg': r.ironMg,
@@ -774,6 +831,66 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             color: Colors.blueGrey.shade500,
+                          ),
+                        ),
+                      ],
+                      if (result.dietitianInsight.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F9F4),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFF1A5D1A).withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.spa_outlined,
+                                    size: 16,
+                                    color: Color(0xFF1A5D1A),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    result.dietitianSource == 'gemini'
+                                        ? 'AI DIETITIAN'
+                                        : 'DIETITIAN TIP',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF1A5D1A),
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                result.dietitianInsight,
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: Colors.blueGrey.shade800,
+                                  height: 1.45,
+                                ),
+                              ),
+                              if (result.dietitianPairing != null &&
+                                  result.dietitianPairing!.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Pair with: ${result.dietitianPairing}',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF1A5D1A),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ],

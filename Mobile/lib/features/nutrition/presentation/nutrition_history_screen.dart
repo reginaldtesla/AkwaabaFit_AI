@@ -580,6 +580,31 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
                     fatG: meal.fat ?? 0,
                   ),
                 ],
+                if (meal.insightMessage != null &&
+                    meal.insightMessage!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.spa_outlined,
+                        size: 14,
+                        color: const Color(0xFF1A5D1A).withValues(alpha: 0.85),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          meal.insightMessage!,
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade700,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -803,6 +828,34 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
                           ),
                         ],
                       ),
+                      if (meal.insightMessage != null &&
+                          meal.insightMessage!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        Text(
+                          'Dietitian note',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.blueGrey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F9F4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            meal.insightMessage!,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: slate800,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
                       if (iron != null || folate != null) ...[
                         const SizedBox(height: 20),
                         Text(
