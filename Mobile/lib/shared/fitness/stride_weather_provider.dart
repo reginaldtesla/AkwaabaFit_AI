@@ -1,8 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
+import 'package:mobile/shared/weather/device_weather_service.dart';
 
-/// Live weather context for Stride — prefers `/activity/today` (OpenWeather).
+/// Live weather for Stride — device Open-Meteo first, then activity/dashboard API.
 class StrideWeatherSnapshot {
   const StrideWeatherSnapshot({
     required this.tempCelsius,
@@ -48,8 +49,19 @@ class StrideWeatherSnapshot {
   }
 }
 
-/// Merges activity API weather with dashboard fallback.
+/// Merges device Open-Meteo weather with dashboard / activity API fallbacks.
 final strideWeatherProvider = Provider<StrideWeatherSnapshot?>((ref) {
+  final device = ref.watch(deviceWeatherProvider).valueOrNull;
+  if (device != null && device.isUsable) {
+    return StrideWeatherSnapshot(
+      tempCelsius: device.tempCelsius,
+      location: device.location,
+      weatherMain: device.weatherMain,
+      weatherDescription: device.weatherDescription,
+      airQualityAqi: device.airQualityAqi,
+    );
+  }
+
   final activity = ref.watch(activityDataProvider).valueOrNull;
   if (activity?.weatherMain != null && activity!.weatherMain!.trim().isNotEmpty) {
     return StrideWeatherSnapshot.fromActivity(activity);

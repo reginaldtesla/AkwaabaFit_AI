@@ -60,7 +60,7 @@ The repository contains two main parts:
 | Area | Details |
 |------|---------|
 | **Auth** | Register, login, logout, forgot / reset password, health profile onboarding |
-| **Home dashboard** | Calories in/out, macro targets, weather (OpenWeather), wellness insight, quick actions |
+| **Home dashboard** | Calories in/out, macro targets, local weather (Open-Meteo + GPS), wellness insight, quick actions |
 | **Stride (fitness)** | Step tracking (pedometer), foreground/background step sync, hourly activity logs, daily leaderboard |
 | **Food scanner** | Full-screen camera UI + **SCAN MEAL** FAB; uploads photo to `POST /api/nutrition/scan`; macros from bundled defaults → SQLite cache → server lookup |
 | **Nutrition** | Meal history by day, macro row (P/C/F), offline SQLite cache + server sync when online |
@@ -116,7 +116,7 @@ Configure in backend `.env`: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY` (see `.en
 
 - **Hugging Face Inference** — primary Ghana food classifier for scans
 - **Google Gemini** — fallback when the classifier is uncertain
-- **OpenWeather** — dashboard weather and safety context
+- **Open-Meteo** — free local weather on device (GPS) and server; no API key
 - **Laravel Reverb** — WebSocket stack (optional; mobile uses polling for any future chat features)
 
 ## Architecture (high level)
@@ -199,7 +199,7 @@ Install these **before** opening the project.
 | **Node.js 18+** and **npm** | Frontend assets | [nodejs.org](https://nodejs.org) |
 | **MySQL 8** (or MariaDB) | Database | Create an empty database, e.g. `akwaabafit` |
 | **Flutter 3.10+** | Mobile app | [flutter.dev](https://flutter.dev) — then run `flutter doctor` and fix anything marked ✗ |
-| **Android Studio** | Android builds | SDK + emulator or a physical phone with USB debugging |
+| **Android Studio** | Android builds | SDK + a physical phone with USB debugging (emulators are blocked by the app) |
 | **Git** (optional) | Version control | Not required for USB setup |
 
 **Windows tips:** Add PHP, Composer, Node, and Flutter to your system **PATH**. Use **PowerShell** or **Command Prompt** for the commands below.
@@ -244,7 +244,7 @@ Edit `.env` on the new machine (minimum):
 
 - `APP_URL` — URL you will use to reach the API (see below).
 - `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — match the MySQL database you created.
-- Optional but recommended: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`, `OPENWEATHER_API_KEY`, `DIETETICS_REVIEW_KEY`.
+- Optional but recommended: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`, `DIETETICS_REVIEW_KEY`.
 
 Create tables and seed food nutrition data:
 
@@ -254,7 +254,7 @@ php artisan db:seed
 php artisan storage:link
 ```
 
-Start the API (bind to all interfaces so phones/emulators can reach it):
+Start the API (bind to all interfaces so phones on your Wi‑Fi can reach it):
 
 ```bash
 php artisan serve --host=0.0.0.0 --port=8080
@@ -288,25 +288,26 @@ flutter doctor
 flutter pub get
 ```
 
-**Choose how the phone/emulator reaches your API:**
+**Choose how your phone reaches your API:**
 
 | Scenario | `API_BASE_URL` example |
 |----------|-------------------------|
 | **Production server** (default in app) | `https://api.tesnet.xyz/api` |
-| Android **emulator** on same PC as local API | `http://10.0.2.2:8080/api` |
-| **Physical phone** on same Wi‑Fi as PC | `http://YOUR-PC-LAN-IP:8080/api` (find IP with `ipconfig` on Windows) |
+| **Physical phone** on same Wi‑Fi as PC (local dev) | `http://YOUR-PC-LAN-IP:8080/api` (find IP with `ipconfig` on Windows) |
 | **Tunnel** (ngrok, etc.) | `https://YOUR-SUBDOMAIN.ngrok-free.dev/api` |
 
-Run the app — **production** (no extra flag needed if default is set):
+> **Note:** AkwaabaFit only runs on **real Android phones and iPhones**. Android emulators and the iOS Simulator show a blocking screen and cannot use the app.
+
+Run on a **physical phone** (USB debugging enabled) — **production** (default API):
 
 ```bash
-flutter run
+flutter run --release
 ```
 
-Run against **local** Laravel on the emulator:
+Local API on your PC (phone on same Wi‑Fi):
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080/api
+flutter run --release --dart-define=API_BASE_URL=http://YOUR-PC-LAN-IP:8080/api
 ```
 
 For a physical device on Wi‑Fi hitting your PC, allow the API port through Windows Firewall. **MySQL must be running** locally or login will fail.
@@ -363,7 +364,7 @@ If you use Git later: clone the repository, then follow **Step 1** (tools), **St
 | `HUGGINGFACE_API_TOKEN` | Ghana food model inference |
 | `FOOD_SCAN_HF_MODEL` / `FOOD_SCAN_HF_THRESHOLD` | Classifier model and confidence cutoff |
 | `GEMINI_API_KEY` / `FOOD_SCAN_GEMINI_MODEL` | Fallback dish identification |
-| `OPENWEATHER_API_KEY` | Weather |
+| `WEATHER_DEFAULT_LAT` / `WEATHER_DEFAULT_LON` | Weather fallback when mobile has no GPS (default Accra) |
 | `DIETETICS_REVIEW_KEY` | Unlock admin application review without staff account |
 | `DIETETICS_ALLOW_SHARED_KEY` | Set `false` in production |
 | `REVERB_*` | WebSocket server |
@@ -431,7 +432,8 @@ Set in the server `.env` (not committed):
 | `APP_DEBUG` | `false` |
 | `GEMINI_API_KEY` | from [Google AI Studio](https://aistudio.google.com/apikey) |
 | `HUGGINGFACE_API_TOKEN` | from [Hugging Face](https://huggingface.co/settings/tokens) |
-| `OPENWEATHER_API_KEY` | optional, for dashboard weather |
+
+Weather uses **Open-Meteo** (free) — no API key. Optional `WEATHER_DEFAULT_*` in `.env` for Accra fallback.
 
 Until you deploy the latest backend, the hosted site may still be the **older GitHub version** (no Gemini dietitian, old payment routes removed locally only, etc.). Local changes only apply on the server after you pull/upload and migrate.
 
@@ -439,7 +441,7 @@ The app is suitable for **beta / pilot** deployment when:
 
 1. API is on **stable HTTPS** (not a dev ngrok URL in release builds).
 2. Production environment: `APP_DEBUG=false`, migrations applied, storage linked.
-3. Food-scan API keys (`HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`) and OpenWeather configured.
+3. Food-scan API keys (`HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`) configured.
 4. Mail configured for password reset.
 5. Android **release signing** and a proper application ID are set before store submission.
 

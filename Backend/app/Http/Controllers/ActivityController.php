@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\DailyStepLog;
 use App\Models\HourlyStepLog;
-use App\Services\OpenWeatherService;
+use App\Services\OpenMeteoService;
+use App\Support\WeatherCoordinates;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
 
 class ActivityController extends Controller
 {
-    public function today(): JsonResponse
+    public function today(Request $request): JsonResponse
     {
         $user = auth()->user();
         $today = now()->toDateString();
@@ -66,7 +67,8 @@ class ActivityController extends Controller
             $buckets
         );
 
-        $weather = app(OpenWeatherService::class)->snapshot();
+        [$weatherLat, $weatherLon] = WeatherCoordinates::optionalFromRequest($request);
+        $weather = app(OpenMeteoService::class)->snapshot($weatherLat, $weatherLon);
 
         return response()->json([
             'stepsToday' => $stepsToday,

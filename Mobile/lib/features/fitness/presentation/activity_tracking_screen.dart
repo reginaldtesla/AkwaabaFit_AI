@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
+import 'package:mobile/shared/weather/device_weather_service.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
@@ -126,7 +127,7 @@ class ActivityData {
   /// Step totals per 3-hour bucket (aligned with [hourlyData] indices).
   final List<int> hourlyBucketSteps;
   final bool fromOfflineCache;
-  /// OpenWeather via `GET /activity/today` (same source as dashboard).
+  /// Weather via `GET /activity/today` (Open-Meteo on server; device GPS when online).
   final double? tempCelsius;
   final String? weatherLocation;
   final String? weatherMain;
@@ -318,7 +319,15 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
   }
 
   try {
-    final response = await dio.get('/activity/today');
+    final coords =
+        await ref.read(deviceWeatherServiceProvider).resolveCoordinates();
+    final response = await dio.get(
+      '/activity/today',
+      queryParameters: {
+        'lat': coords.lat.toStringAsFixed(5),
+        'lon': coords.lon.toStringAsFixed(5),
+      },
+    );
     final raw = response.data;
     if (raw is! Map) {
       throw Exception('Unexpected activity response.');
@@ -1130,7 +1139,7 @@ class _StrideWeatherContextCard extends ConsumerWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Weather loads when you\'re online — OpenWeather powers Stride tips.',
+                'Allow location and connect to load local weather for Stride tips.',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   height: 1.35,
@@ -1216,7 +1225,7 @@ class _StrideWeatherContextCard extends ConsumerWidget {
               ),
               if (snap.fromActivityApi)
                 Tooltip(
-                  message: 'Live from OpenWeather',
+                  message: 'Live local weather',
                   child: Icon(
                     Icons.cloud_done_outlined,
                     size: 20,

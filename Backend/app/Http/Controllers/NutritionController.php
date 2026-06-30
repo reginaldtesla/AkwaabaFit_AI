@@ -6,11 +6,13 @@ use App\Models\FoodNutritionItem;
 use App\Models\MealLog;
 use App\Services\DietitianAdviceService;
 use App\Services\FoodScanService;
+use App\Support\HealthProfileOptions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 class NutritionController extends Controller
@@ -52,6 +54,8 @@ class NutritionController extends Controller
                             'insightMessage' => $m->insight_message,
                             'imageUrl' => $m->image_url,
                             'source' => $m->source,
+                            'portionSize' => $m->portion_size,
+                            'mealSource' => $m->meal_source,
                             'meta' => $m->meta,
                         ];
                     }),
@@ -114,6 +118,63 @@ class NutritionController extends Controller
         ]);
     }
 
+    /**
+     * Search food catalog (manual logging).
+     */
+    public function searchFoods(Request $request): JsonResponse
+    {
+        $q = Str::lower(trim((string) $request->query('q', '')));
+        $prep = trim((string) $request->query('preparation', ''));
+
+        $query = FoodNutritionItem::query()->orderBy('display_name');
+        if ($q !== '') {
+            $query->where(function ($builder) use ($q) {
+                $builder->where('class_name', 'like', "%{$q}%")
+                    ->orWhere('display_name', 'like', "%{$q}%");
+            });
+        }
+        if ($prep !== '') {
+            $query->where('preparation_type', $prep);
+        }
+
+        $items = $query->limit(30)->get()->map(fn (FoodNutritionItem $item) => $item->toApiArray());
+
+        return response()->json([
+            'status' => 'success',
+            'foods' => $items,
+        ]);
+    }
+
+    /**
+     * Recent meals for quick re-log.
+     */
+    public function recentMeals(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $logs = MealLog::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('eaten_at')
+            ->limit(20)
+            ->get();
+
+        $unique = $logs->unique(fn (MealLog $m) => Str::lower($m->name))->take(8)->values();
+
+        return response()->json([
+            'status' => 'success',
+            'meals' => $unique->map(fn (MealLog $m) => [
+                'name' => $m->name,
+                'calories' => (int) $m->calories,
+                'proteinG' => $m->protein_g,
+                'carbsG' => $m->carbs_g,
+                'fatG' => $m->fat_g,
+                'mealType' => $m->meal_type,
+                'portionSize' => $m->portion_size,
+                'mealSource' => $m->meal_source,
+                'meta' => $m->meta,
+            ]),
+        ]);
+    }
+
     public function scan(Request $request, FoodScanService $scanner): JsonResponse
     {
         $request->validate([
@@ -132,10 +193,11 @@ class NutritionController extends Controller
         if ($result['detections'] === []) {
             return response()->json([
                 'status' => 'success',
+                'not_food' => true,
                 'provider' => $result['provider'],
                 'strategy' => $result['strategy'],
                 'detections' => [],
-                'message' => 'No food detected. Try better lighting and center the plate in the frame.',
+                'message' => "This doesn't look like food. Point your camera at a meal on a plate and scan again.",
             ]);
         }
 
@@ -174,8 +236,19 @@ class NutritionController extends Controller
             'insight_message' => ['nullable', 'string', 'max:255'],
             'image_url' => ['nullable', 'string', 'max:1000'],
             'source' => ['nullable', 'string', 'in:scan,manual'],
+            'portion_size' => ['nullable', 'string', Rule::in(HealthProfileOptions::portionSizes())],
+            'meal_source' => ['nullable', 'string', Rule::in(HealthProfileOptions::mealSources())],
             'meta' => ['nullable', 'array'],
         ]);
+
+        $multiplier = HealthProfileOptions::portionMultiplier($data['portion_size'] ?? null);
+        if ($multiplier !== 1.0) {
+            foreach (['calories', 'protein_g', 'carbs_g', 'fat_g'] as $field) {
+                if (isset($data[$field])) {
+                    $data[$field] = (int) round($data[$field] * $multiplier);
+                }
+            }
+        }
 
         $insight = $data['insight_message'] ?? null;
         if (! is_string($insight) || trim($insight) === '') {
@@ -213,6 +286,8 @@ class NutritionController extends Controller
             'insight_message' => $insight,
             'image_url' => $data['image_url'] ?? null,
             'source' => $data['source'] ?? 'scan',
+            'portion_size' => $data['portion_size'] ?? null,
+            'meal_source' => $data['meal_source'] ?? null,
             'meta' => $data['meta'] ?? null,
         ]);
 

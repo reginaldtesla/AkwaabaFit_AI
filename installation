@@ -3,18 +3,17 @@
 This guide assumes you have **never deployed this project before**. It walks through:
 
 1. **Windows PC** — run the API locally while building the Flutter app  
-2. **HP ProBook (Ubuntu)** — production API with **Cloudflare** (HTTPS for mobile + Paystack)  
+2. **HP ProBook (Ubuntu)** — production API with **Cloudflare** (HTTPS for mobile)  
 3. **Mobile app** — point Flutter at your API URL  
 
-The repo has three folders:
+The repo has two main folders:
 
 | Folder | What it is | Runs on server? |
 |--------|------------|-----------------|
-| **`Backend/`** | Laravel API, admin web, Paystack webhooks | **Yes** (ProBook) |
-| **`Mobile/`** | Flutter app (Android / iOS) | No — build on your PC |
-| **`AI/`** | YOLO training scripts (optional) | No — only if retraining the food model |
+| **`Backend/`** | Laravel API + admin/advisor web portals | **Yes** (ProBook) |
+| **`Mobile/`** | Flutter app (Android / iOS, physical device) | No — build on your PC |
 
-**Food scanning** uses an **ONNX model bundled in the mobile app**. You do **not** need Python on the ProBook for normal operation.
+**Food scanning** uses a **hybrid cloud API** (Hugging Face Ghana model + Gemini fallback). No ONNX model on the phone. Weather uses **Open-Meteo** (free) with phone GPS — no weather API key.
 
 ---
 
@@ -54,8 +53,8 @@ Gather these **before** production deploy:
 |------|---------|---------------|
 | Domain on Cloudflare | `akwaabafit.ai` | DNS + Tunnel |
 | API subdomain | `api.akwaabafit.ai` | `APP_URL` in `.env` |
-| Paystack keys | `pk_test_…` / `sk_test_…` | Backend `.env` |
-| OpenWeather key | from openweathermap.org | Backend `.env` |
+| Paystack keys | *(removed — no in-app payments)* | — |
+| Weather | Open-Meteo (free, no key) | Optional `WEATHER_DEFAULT_*` in `.env` |
 | Firebase project | FCM for push | JSON file + `.env` |
 | Strong DB password | 32+ random chars | MariaDB + `.env` |
 | Admin staff user | created after migrate | `/admin/login` |
@@ -341,15 +340,12 @@ QUEUE_CONNECTION=database
 CACHE_STORE=database
 BROADCAST_CONNECTION=reverb
 
-# Paystack
-PAYSTACK_PUBLIC_KEY=pk_live_or_test_...
-PAYSTACK_SECRET_KEY=sk_live_or_test_...
-PAYSTACK_CURRENCY=GHS
+# Weather (Open-Meteo — optional Accra fallback if GPS unavailable)
+WEATHER_DEFAULT_LAT=5.6037
+WEATHER_DEFAULT_LON=-0.1870
+WEATHER_DEFAULT_LABEL="Accra, GH"
 
-# OpenWeather
-OPENWEATHER_API_KEY=your_key
-
-# Admin dietetics review (production: disable shared key)
+# Admin dietetics review
 DIETETICS_REVIEW_KEY=long-random-string-for-emergency-unlock
 DIETETICS_ALLOW_SHARED_KEY=false
 

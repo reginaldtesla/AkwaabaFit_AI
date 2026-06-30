@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Support\BodyMetrics;
 use App\Support\GhanaianMealSuggestions;
+use App\Support\HealthAssistantCoaching;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -211,6 +212,10 @@ class DietitianAdviceService
                     : 'Body profile',
                 'detail' => $bmiLine,
             ];
+        }
+
+        foreach (HealthAssistantCoaching::recommendationsFor($user) as $assistantRec) {
+            $recommendations[] = $assistantRec;
         }
 
         if ($alertTitle && $alertMessage && ! str_contains(strtolower($alertTitle), 'no alert')) {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateProfileRequest;
+use App\Support\HealthProfileOptions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -25,14 +26,28 @@ class ProfileController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
-        // Set profile_completed to true if core health fields are provided
         if (
-            isset($data['age']) &&
-            isset($data['gender']) &&
-            isset($data['height']) &&
-            isset($data['weight'])
+            isset($data['age'], $data['gender'], $data['height'], $data['weight'], $data['goal'], $data['activity_level'])
         ) {
             $data['profile_completed'] = true;
+        }
+
+        if (! isset($data['water_goal_ml']) && isset($data['weight'])) {
+            $data['water_goal_ml'] = HealthProfileOptions::defaultWaterGoalMl((int) $data['weight']);
+        }
+
+        if (
+            isset($data['activity_context'], $data['activity_level'])
+            && ! isset($data['step_goal'])
+        ) {
+            $data['step_goal'] = HealthProfileOptions::ghanaStepGoalForContext(
+                (string) $data['activity_context'],
+                (string) $data['activity_level'],
+            );
+        }
+
+        if (! $user->accountability_code && ($data['profile_completed'] ?? false)) {
+            $data['accountability_code'] = strtoupper(substr(bin2hex(random_bytes(4)), 0, 6));
         }
 
         $user->update($data);

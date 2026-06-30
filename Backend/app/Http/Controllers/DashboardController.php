@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\DailyStepLog;
 use App\Models\MealLog;
+use App\Models\WaterLog;
 use App\Services\DietitianAdviceService;
-use App\Services\OpenWeatherService;
+use App\Services\OpenMeteoService;
+use App\Support\HealthProfileOptions;
+use App\Support\WeatherCoordinates;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -153,7 +156,11 @@ class DashboardController extends Controller
 
         $netKcal = $consumedKcal - $burnedKcal;
 
-        [$tempCelsius, $locationLabel, $air] = app(OpenWeatherService::class)->legacyTuple();
+        [$weatherLat, $weatherLon] = WeatherCoordinates::optionalFromRequest($request);
+        [$tempCelsius, $locationLabel, $air] = app(OpenMeteoService::class)->legacyTuple(
+            $weatherLat,
+            $weatherLon,
+        );
 
         [$alertTitle, $alertMessage] = $this->buildEnvironmentalAlert(
             tempCelsius: $tempCelsius,
@@ -180,6 +187,16 @@ class DashboardController extends Controller
             stepGoal: $stepGoal,
             burnedKcal: $burnedKcal,
         );
+
+        $waterGoalMl = (int) ($user->water_goal_ml
+            ?: HealthProfileOptions::defaultWaterGoalMl($weightKg !== null ? (int) $weightKg : null));
+        $waterTodayMl = 0;
+        if (Schema::hasTable('water_logs')) {
+            $waterTodayMl = (int) WaterLog::query()
+                ->where('user_id', $user->id)
+                ->whereBetween('logged_at', [now()->startOfDay(), now()->endOfDay()])
+                ->sum('amount_ml');
+        }
 
         return response()->json([
             'userName' => $user->name,
@@ -227,6 +244,10 @@ class DashboardController extends Controller
             ],
             'mealsLoggedToday' => $mealsLoggedToday,
             'mealsLogged7Days' => $mealsLogged7Days,
+            'hydration' => [
+                'totalMl' => $waterTodayMl,
+                'goalMl' => $waterGoalMl,
+            ],
             'dietitianAdvice' => $dietitianAdvice,
             'calories' => max(0, $netKcal),
             'activeMinutes' => (int) round($todaySteps / 120),

@@ -11,6 +11,7 @@ import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
 import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
+import 'package:mobile/features/nutrition/presentation/water_tracker_card.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/shared/nutrition/dietitian_advice.dart';
 import 'package:mobile/shared/nutrition/nutrition_refresh.dart';
@@ -32,6 +33,8 @@ import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/fitness/stride_weather_guidance.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
+import 'package:mobile/shared/weather/dashboard_weather_merge.dart';
+import 'package:mobile/shared/weather/device_weather_service.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT (RIVERPOD DATA MODELS)
@@ -71,6 +74,8 @@ class DashboardData {
   final bool macrosEstimated;
   final double? weightKg;
   final double? heightCm;
+  final int waterTotalMl;
+  final int waterGoalMl;
   final DietitianAdvice? dietitianAdvice;
 
   DashboardData({
@@ -104,6 +109,8 @@ class DashboardData {
     this.macrosEstimated = false,
     this.weightKg,
     this.heightCm,
+    this.waterTotalMl = 0,
+    this.waterGoalMl = 2000,
     this.dietitianAdvice,
   });
 
@@ -202,6 +209,7 @@ class DashboardData {
         dietRaw.map((k, dynamic v) => MapEntry(k.toString(), v)),
       );
     }
+    final hydration = _dashboardJsonMap(json['hydration']);
 
     return DashboardData(
       userName: (json['userName'] ?? '').toString(),
@@ -249,6 +257,8 @@ class DashboardData {
       ),
       weightKg: _dashboardJsonDoubleOrNull(json['weightKg']),
       heightCm: _dashboardJsonDoubleOrNull(json['heightCm']),
+      waterTotalMl: _dashboardJsonInt(hydration['totalMl']),
+      waterGoalMl: _dashboardJsonInt(hydration['goalMl']).clamp(1500, 5000),
       dietitianAdvice: dietitianAdvice,
     );
   }
@@ -461,6 +471,34 @@ DashboardData _estimateMacrosWhenNoGrams(DashboardData data) {
     mealsLogged7Days: data.mealsLogged7Days,
     fromOfflineCache: data.fromOfflineCache,
     macrosEstimated: true,
+  );
+}
+
+/// Meals, steps, and last API snapshot from SQLite — no network.
+Future<DashboardData> _loadDashboardFromDevice(
+  Ref ref,
+  SqliteOfflineDb db,
+) async {
+  final cached = await db.getDashboardCache();
+  if (cached != null) {
+    final base = DashboardData.fromJson(cached, fromOfflineCache: true);
+    final merged = await _mergePendingNutritionIntoDashboard(base, db);
+    return _applyLocalStepGoalToDashboard(
+      ref,
+      _normalizeDashboardMacrosToConsumedCalories(merged),
+    );
+  }
+
+  final pure = await _pureOfflineDashboardFromSqlite(ref, db);
+  if (pure != null) {
+    return _applyLocalStepGoalToDashboard(
+      ref,
+      _normalizeDashboardMacrosToConsumedCalories(pure),
+    );
+  }
+
+  throw Exception(
+    'No internet connection and no local activity yet.',
   );
 }
 
@@ -729,6 +767,21 @@ Map<String, String> _dashboardLocalDayQueryParams() {
   };
 }
 
+Future<Map<String, String>> _dashboardApiQueryParams(Ref ref) async {
+  final params = _dashboardLocalDayQueryParams();
+  try {
+    final coords =
+        await ref.read(deviceWeatherServiceProvider).resolveCoordinates();
+    return {
+      ...params,
+      'lat': coords.lat.toStringAsFixed(5),
+      'lon': coords.lon.toStringAsFixed(5),
+    };
+  } catch (_) {
+    return params;
+  }
+}
+
 // In production, this will use Dio to fetch from Laravel `GET /api/dashboard`.
 final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
   ref.watch(nutritionDashboardRefreshProvider);
@@ -740,17 +793,11 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
 
   final db = await SqliteOfflineDb.getInstance();
 
-  Future<DashboardData?> loadCachedDashboard() async {
-    final cached = await db.getDashboardCache();
-    if (cached == null) return null;
-    return DashboardData.fromJson(cached, fromOfflineCache: true);
-  }
-
   final dio = Dio(
     BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 4),
+      receiveTimeout: const Duration(seconds: 6),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -761,30 +808,13 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
   final online = await isDeviceOnline();
 
   if (!online) {
-    final cached = await loadCachedDashboard();
-    if (cached != null) {
-      final merged = await _mergePendingNutritionIntoDashboard(cached, db);
-      return _applyLocalStepGoalToDashboard(
-        ref,
-        _normalizeDashboardMacrosToConsumedCalories(merged),
-      );
-    }
-    final pure = await _pureOfflineDashboardFromSqlite(ref, db);
-    if (pure != null) {
-      return _applyLocalStepGoalToDashboard(
-        ref,
-        _normalizeDashboardMacrosToConsumedCalories(pure),
-      );
-    }
-    throw Exception(
-      'No internet connection and no local activity yet.',
-    );
+    return _loadDashboardFromDevice(ref, db);
   }
 
   try {
     final response = await dio.get(
       '/dashboard',
-      queryParameters: _dashboardLocalDayQueryParams(),
+      queryParameters: await _dashboardApiQueryParams(ref),
     );
     final raw = response.data;
     if (raw is! Map) {
@@ -799,22 +829,7 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
       _normalizeDashboardMacrosToConsumedCalories(merged),
     );
   } catch (_) {
-    final cached = await loadCachedDashboard();
-    if (cached != null) {
-      final merged = await _mergePendingNutritionIntoDashboard(cached, db);
-      return _applyLocalStepGoalToDashboard(
-        ref,
-        _normalizeDashboardMacrosToConsumedCalories(merged),
-      );
-    }
-    final pure = await _pureOfflineDashboardFromSqlite(ref, db);
-    if (pure != null) {
-      return _applyLocalStepGoalToDashboard(
-        ref,
-        _normalizeDashboardMacrosToConsumedCalories(pure),
-      );
-    }
-    rethrow;
+    return _loadDashboardFromDevice(ref, db);
   }
 });
 
@@ -947,30 +962,13 @@ class DashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: bgSoft,
-      body: dashboardState.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: primary),
-        ),
-        error: (err, stack) => NetworkErrorView(
-          title: 'Dashboard unavailable',
-          message: userFriendlyDataLoadMessage(err),
-          onRetry: () => ref.invalidate(dashboardDataProvider),
-        ),
-        data: (data) {
-          final liveSteps = stepsTodayAsync.valueOrNull;
-          final merged = data.copyWith(
-            currentSteps: liveSteps ?? data.currentSteps,
-            stepGoal: _effectiveDashboardStepGoal(data, localStepGoal),
-            dailyCaloriesTarget:
-                _effectiveDashboardDailyCalories(data, localDailyKcal),
-          );
-          if (liveSteps != null && liveSteps > 0) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              BackgroundStepTrackingBootstrap.promptBatteryIfNeeded(context);
-            });
-          }
-          return _buildContent(context, merged, ref);
-        },
+      body: _buildDashboardBody(
+        context,
+        ref,
+        dashboardState,
+        stepsTodayAsync,
+        localStepGoal,
+        localDailyKcal,
       ),
 
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -980,6 +978,77 @@ class DashboardScreen extends ConsumerWidget {
         activeTab: AppTab.home,
         onTabSelected: (tab) => _handleTab(context, tab),
       ),
+    );
+  }
+
+  Widget _buildDashboardBody(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<DashboardData> dashboardState,
+    AsyncValue<int> stepsTodayAsync,
+    int? localStepGoal,
+    int? localDailyKcal,
+  ) {
+    if (dashboardState.hasError && !dashboardState.hasValue) {
+      return NetworkErrorView(
+        title: 'Dashboard unavailable',
+        message: userFriendlyDataLoadMessage(dashboardState.error!),
+        onRetry: () => ref.invalidate(dashboardDataProvider),
+      );
+    }
+
+    if (dashboardState.isLoading && !dashboardState.hasValue) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: primary),
+            const SizedBox(height: 16),
+            Text(
+              'Loading your dashboard…',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final data = dashboardState.requireValue;
+    final deviceWeather = ref.watch(deviceWeatherProvider).valueOrNull;
+    final liveSteps = stepsTodayAsync.valueOrNull;
+    final merged = applyDeviceWeatherToDashboard(
+      data.copyWith(
+        currentSteps: liveSteps ?? data.currentSteps,
+        stepGoal: _effectiveDashboardStepGoal(data, localStepGoal),
+        dailyCaloriesTarget:
+            _effectiveDashboardDailyCalories(data, localDailyKcal),
+      ),
+      deviceWeather,
+    );
+
+    if (liveSteps != null && liveSteps > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        BackgroundStepTrackingBootstrap.promptBatteryIfNeeded(context);
+      });
+    }
+
+    return Stack(
+      children: [
+        _buildContent(context, merged, ref),
+        if (dashboardState.isLoading)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: LinearProgressIndicator(
+              color: primary,
+              minHeight: 3,
+            ),
+          ),
+      ],
     );
   }
 
@@ -1063,6 +1132,11 @@ class DashboardScreen extends ConsumerWidget {
             _buildCalorieCard(data),
             const SizedBox(height: 16),
             _buildWeatherStepsCard(data),
+            const SizedBox(height: 16),
+            WaterTrackerCard(
+              initialTotalMl: data.waterTotalMl,
+              initialGoalMl: data.waterGoalMl,
+            ),
             const SizedBox(height: 16),
             _buildDietitianCoachCard(context, data),
             ],

@@ -21,7 +21,7 @@ class SqliteOfflineDb {
     final path = p.join(dbPath, 'akwaaba_offline.db');
     final db = await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE profile_cache (
@@ -90,6 +90,14 @@ class SqliteOfflineDb {
         await db.execute('''
           CREATE TABLE nutrition_food_cache (
             class_name TEXT PRIMARY KEY,
+            json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        ''');
+
+        await db.execute('''
+          CREATE TABLE weather_cache (
+            key TEXT PRIMARY KEY,
             json TEXT NOT NULL,
             updated_at TEXT NOT NULL
           );
@@ -169,6 +177,14 @@ class SqliteOfflineDb {
             updated_at TEXT NOT NULL
           );
         ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS weather_cache (
+            key TEXT PRIMARY KEY,
+            json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -228,6 +244,15 @@ class SqliteOfflineDb {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS nutrition_food_cache (
               class_name TEXT PRIMARY KEY,
+              json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+          ''');
+        }
+        if (oldVersion < 6) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS weather_cache (
+              key TEXT PRIMARY KEY,
               json TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -661,6 +686,39 @@ class SqliteOfflineDb {
   Future<Map<String, dynamic>?> getDashboardCache() async {
     final rows = await _db.query(
       'dashboard_cache',
+      columns: ['json'],
+      where: 'key = ?',
+      whereArgs: ['current'],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(rows.first['json'] as String);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> putWeatherCache(Map<String, dynamic> json) async {
+    await _db.insert(
+      'weather_cache',
+      {
+        'key': 'current',
+        'json': jsonEncode(json),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getWeatherCache() async {
+    final rows = await _db.query(
+      'weather_cache',
       columns: ['json'],
       where: 'key = ?',
       whereArgs: ['current'],

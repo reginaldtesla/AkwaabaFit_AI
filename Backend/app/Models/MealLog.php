@@ -25,6 +25,8 @@ class MealLog extends Model
         'insight_message',
         'image_url',
         'source',
+        'portion_size',
+        'meal_source',
         'meta',
     ];
 

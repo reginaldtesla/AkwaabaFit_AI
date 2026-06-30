@@ -19,6 +19,7 @@ class LocalNotificationService {
 
   static const int _stepsBase = 2000;
   static const int _dailyGoalNotifId = 3100;
+  static const int _mealReminderBase = 3200;
   static const int _stepsEnableConfirmId = 999;
   static const int _consultBase = 9000;
 
@@ -114,6 +115,55 @@ class LocalNotificationService {
       hour: 8,
       minute: 0,
     );
+  }
+
+  /// Ghana meal-time nudges (Accra timezone).
+  Future<void> scheduleGhanaMealReminders() async {
+    await ensureInitialized();
+    final permissionGranted = await _requestNotificationPermission();
+    if (!permissionGranted) return;
+
+    for (var i = 0; i < 4; i++) {
+      await _plugin.cancel(id: _mealReminderBase + i);
+    }
+
+    const slots = <({int hour, int minute, String title, String body})>[
+      (
+        hour: 7,
+        minute: 30,
+        title: 'Morning chop',
+        body: 'Waakye or koko time—log breakfast so your coach can balance the day.',
+      ),
+      (
+        hour: 12,
+        minute: 30,
+        title: 'Lunch hour',
+        body: 'Banku, jollof, or fufu lunch—scan or log your plate.',
+      ),
+      (
+        hour: 15,
+        minute: 30,
+        title: 'Afternoon',
+        body: 'Light koko, fruit, or a small snack if you are hungry.',
+      ),
+      (
+        hour: 18,
+        minute: 30,
+        title: 'Supper',
+        body: 'Kenkey, soup, or lighter waakye—evening food fits now.',
+      ),
+    ];
+
+    for (var i = 0; i < slots.length; i++) {
+      final s = slots[i];
+      await _scheduleDailyAt(
+        id: _mealReminderBase + i,
+        title: s.title,
+        body: s.body,
+        hour: s.hour,
+        minute: s.minute,
+      );
+    }
   }
 
   /// Confirm booking immediately and schedule reminders for the appointment time.

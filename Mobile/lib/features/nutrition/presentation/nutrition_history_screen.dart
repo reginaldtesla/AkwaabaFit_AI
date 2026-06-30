@@ -6,6 +6,7 @@ import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
+import 'package:mobile/features/nutrition/presentation/manual_meal_log_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
@@ -310,7 +311,28 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: ScanMealFab(color: dashboardGreen),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'manual_meal_log',
+            backgroundColor: Colors.white,
+            foregroundColor: dashboardGreen,
+            onPressed: () async {
+              final logged = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(builder: (_) => const ManualMealLogScreen()),
+              );
+              if (logged == true && context.mounted) {
+                ref.invalidate(nutritionHistoryProvider);
+              }
+            },
+            child: const Icon(Icons.edit_note),
+          ),
+          const SizedBox(height: 10),
+          ScanMealFab(color: dashboardGreen),
+        ],
+      ),
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.history,
         onTabSelected: (tab) => _handleTab(context, tab),

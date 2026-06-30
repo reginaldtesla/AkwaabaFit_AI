@@ -8,16 +8,26 @@ import 'package:mobile/features/auth/presentation/splash_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
+import 'package:mobile/shared/device/physical_device_guard.dart';
+import 'package:mobile/shared/device/unsupported_device_screen.dart';
 import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 import 'package:mobile/shared/app_update/app_update_banner.dart';
 import 'package:mobile/shared/app_update/app_update_provider.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
+import 'package:mobile/shared/weather/device_weather_service.dart';
 import 'package:mobile/shared/fitness/step_goal_notification_listener.dart';
 import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final blockReason = await PhysicalDeviceGuard.blockReason();
+  if (blockReason != null) {
+    runApp(UnsupportedDeviceScreen(message: blockReason));
+    return;
+  }
+
   // Splash text should appear on the first Flutter frame (no blank flash after native splash).
   await GoogleFonts.pendingFonts([
     GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
@@ -89,6 +99,7 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(activityDataProvider);
       ref.invalidate(nutritionHistoryProvider);
+      ref.invalidate(deviceWeatherProvider);
       ref.invalidate(appUpdateInfoProvider);
     });
 
@@ -96,18 +107,22 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       final isOnline = results.contains(ConnectivityResult.wifi) ||
           results.contains(ConnectivityResult.mobile) ||
           results.contains(ConnectivityResult.ethernet);
-      if (!isOnline) return;
 
       final now = DateTime.now();
       final last = _lastSyncAttempt;
       if (last != null && now.difference(last).inSeconds < 5) return;
       _lastSyncAttempt = now;
 
-      ref.read(profileRepositoryProvider).syncPendingIfAny();
-      ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+      // Offline: show SQLite-backed dashboard immediately (no API wait).
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(activityDataProvider);
       ref.invalidate(nutritionHistoryProvider);
+      ref.invalidate(deviceWeatherProvider);
+
+      if (!isOnline) return;
+
+      ref.read(profileRepositoryProvider).syncPendingIfAny();
+      ref.read(nutritionRepositoryProvider).syncPendingIfAny();
       ref.invalidate(appUpdateInfoProvider);
     });
   }

@@ -36,13 +36,14 @@ return [
     ],
 
     /*
-    | OpenWeatherMap (dashboard weather + air quality via DashboardController).
+    | Open-Meteo (free, no API key) — dashboard + Stride weather.
+    | Mobile may pass ?lat=&lon= from GPS; otherwise defaults to Accra.
     */
-    'openweather' => [
-        'key' => env('OPENWEATHER_API_KEY'),
-        'default_lat' => env('OPENWEATHER_DEFAULT_LAT', 5.6037),
-        'default_lon' => env('OPENWEATHER_DEFAULT_LON', -0.1870),
-        'default_label' => env('OPENWEATHER_DEFAULT_LABEL', 'Accra, GH'),
+    'weather' => [
+        'default_lat' => (float) env('WEATHER_DEFAULT_LAT', 5.6037),
+        'default_lon' => (float) env('WEATHER_DEFAULT_LON', -0.1870),
+        'default_label' => env('WEATHER_DEFAULT_LABEL', 'Accra, GH'),
+        'cache_minutes' => (int) env('WEATHER_CACHE_MINUTES', 15),
     ],
 
     /*
@@ -73,6 +74,8 @@ return [
             'Kennethdot/convnext_finetuned_ghanaian_food'
         ),
         'hf_confidence_threshold' => (float) env('FOOD_SCAN_HF_THRESHOLD', 0.65),
+        /** Detections below this are treated as "not food" (reduces false positives). */
+        'min_detection_confidence' => (float) env('FOOD_SCAN_MIN_CONFIDENCE', 0.30),
         'gemini_api_key' => env('GEMINI_API_KEY'),
         'gemini_model' => env('FOOD_SCAN_GEMINI_MODEL', 'gemini-2.5-flash'),
     ],

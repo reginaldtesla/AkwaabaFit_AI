@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/config/app_config.dart';
 
@@ -47,6 +48,7 @@ class FoodScanApiService {
         String provider,
         String strategy,
         List<FoodScanDetection> detections,
+        String? message,
       })> scanImage(String imagePath) async {
     final token = await _storage.read(key: 'sanctum_token');
     if (token == null || token.isEmpty) {
@@ -96,6 +98,7 @@ class FoodScanApiService {
       provider: map['provider']?.toString() ?? 'hybrid',
       strategy: map['strategy']?.toString() ?? 'unknown',
       detections: detections,
+      message: map['message']?.toString(),
     );
   }
 
@@ -158,3 +161,7 @@ class FoodScanApiService {
     );
   }
 }
+
+final foodScanApiProvider = Provider<FoodScanApiService>((ref) {
+  return FoodScanApiService();
+});

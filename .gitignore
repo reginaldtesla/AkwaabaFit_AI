@@ -6,7 +6,6 @@
 *.pt
 *.pth
 *.onnx
-!Mobile/assets/models/*.onnx
 
 # Python
 __pycache__/

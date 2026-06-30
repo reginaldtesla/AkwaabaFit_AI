@@ -31,20 +31,7 @@ class DashboardTest extends TestCase
             'log_date' => now()->toDateString(),
         ]);
 
-        Http::fake([
-            'api.openweathermap.org/data/2.5/weather*' => Http::response([
-                'main' => ['temp' => 29.4],
-                'name' => 'Accra',
-                'sys' => ['country' => 'GH'],
-                'weather' => [['main' => 'Haze', 'description' => 'dust haze']],
-            ], 200),
-            'api.openweathermap.org/data/2.5/air_pollution*' => Http::response([
-                'list' => [[
-                    'main' => ['aqi' => 4],
-                    'components' => ['pm2_5' => 55.2, 'pm10' => 140.7],
-                ]],
-            ], 200),
-        ]);
+        $this->fakeOpenMeteo();
 
         $response = $this->actingAs($user)->getJson('/api/dashboard');
 
@@ -79,20 +66,7 @@ class DashboardTest extends TestCase
             'daily_calories_target' => 2618,
         ]);
 
-        Http::fake([
-            'api.openweathermap.org/data/2.5/weather*' => Http::response([
-                'main' => ['temp' => 22.0],
-                'name' => 'Accra',
-                'sys' => ['country' => 'GH'],
-                'weather' => [['main' => 'Clear', 'description' => 'clear sky']],
-            ], 200),
-            'api.openweathermap.org/data/2.5/air_pollution*' => Http::response([
-                'list' => [[
-                    'main' => ['aqi' => 1],
-                    'components' => ['pm2_5' => 5.0, 'pm10' => 10.0],
-                ]],
-            ], 200),
-        ]);
+        $this->fakeOpenMeteo(temp: 22.0, weatherCode: 0, aqi: 1);
 
         $response = $this->actingAs($user)->getJson('/api/dashboard');
 
@@ -130,20 +104,7 @@ class DashboardTest extends TestCase
             'fat_g' => 8,
         ]);
 
-        Http::fake([
-            'api.openweathermap.org/data/2.5/weather*' => Http::response([
-                'main' => ['temp' => 22.0],
-                'name' => 'Accra',
-                'sys' => ['country' => 'GH'],
-                'weather' => [['main' => 'Clear', 'description' => 'clear sky']],
-            ], 200),
-            'api.openweathermap.org/data/2.5/air_pollution*' => Http::response([
-                'list' => [[
-                    'main' => ['aqi' => 1],
-                    'components' => ['pm2_5' => 5.0, 'pm10' => 10.0],
-                ]],
-            ], 200),
-        ]);
+        $this->fakeOpenMeteo(temp: 22.0, weatherCode: 0, aqi: 1);
 
         $response = $this->actingAs($user)->getJson('/api/dashboard');
 
@@ -177,20 +138,7 @@ class DashboardTest extends TestCase
             'fat_g' => null,
         ]);
 
-        Http::fake([
-            'api.openweathermap.org/data/2.5/weather*' => Http::response([
-                'main' => ['temp' => 22.0],
-                'name' => 'Accra',
-                'sys' => ['country' => 'GH'],
-                'weather' => [['main' => 'Clear', 'description' => 'clear sky']],
-            ], 200),
-            'api.openweathermap.org/data/2.5/air_pollution*' => Http::response([
-                'list' => [[
-                    'main' => ['aqi' => 1],
-                    'components' => ['pm2_5' => 5.0, 'pm10' => 10.0],
-                ]],
-            ], 200),
-        ]);
+        $this->fakeOpenMeteo(temp: 22.0, weatherCode: 0, aqi: 1);
 
         $response = $this->actingAs($user)->getJson('/api/dashboard');
 
@@ -202,5 +150,32 @@ class DashboardTest extends TestCase
             + (int) $response->json('macros.carbsG')
             + (int) $response->json('macros.fatG');
         $this->assertGreaterThan(0, $totalGrams);
+    }
+
+    private function fakeOpenMeteo(
+        float $temp = 29.4,
+        int $weatherCode = 45,
+        int $aqi = 4,
+    ): void {
+        Http::fake([
+            'api.open-meteo.com/*' => Http::response([
+                'current' => [
+                    'temperature_2m' => $temp,
+                    'weather_code' => $weatherCode,
+                ],
+            ], 200),
+            'air-quality-api.open-meteo.com/*' => Http::response([
+                'current' => [
+                    'us_aqi' => $aqi,
+                    'pm2_5' => 55.2,
+                    'pm10' => 140.7,
+                ],
+            ], 200),
+            'geocoding-api.open-meteo.com/*' => Http::response([
+                'results' => [
+                    ['name' => 'Accra', 'country_code' => 'GH'],
+                ],
+            ], 200),
+        ]);
     }
 }

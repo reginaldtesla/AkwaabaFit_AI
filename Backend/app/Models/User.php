@@ -32,6 +32,14 @@ use Laravel\Sanctum\HasApiTokens;
     'step_goal',
     'daily_calories_target',
     'goal',
+    'health_conditions',
+    'eating_pattern',
+    'life_stage',
+    'meal_source_preference',
+    'activity_context',
+    'water_goal_ml',
+    'meal_reminders_enabled',
+    'accountability_code',
     'workout_time_preference',
     'workout_days_per_week',
     'profile_completed',
@@ -62,6 +70,9 @@ class User extends Authenticatable
             'daily_calories_target' => 'integer',
             'workout_days_per_week' => 'integer',
             'profile_completed' => 'boolean',
+            'health_conditions' => 'array',
+            'water_goal_ml' => 'integer',
+            'meal_reminders_enabled' => 'boolean',
         ];
     }
 
@@ -78,6 +89,11 @@ class User extends Authenticatable
     public function mealLogs(): HasMany
     {
         return $this->hasMany(MealLog::class);
+    }
+
+    public function waterLogs(): HasMany
+    {
+        return $this->hasMany(WaterLog::class);
     }
 
     /**

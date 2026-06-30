@@ -36,17 +36,13 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   camera: ^0.10.5+9
   image_picker: ^1.1.2
-  file_picker: ^8.1.7
   pedometer: ^4.1.1
   permission_handler: ^12.0.1
 
-  # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
   flutter_local_notifications: ^21.0.0
   timezone: ^0.11.0
   connectivity_plus: ^7.1.1
-  path_provider: ^2.1.5
   path: ^1.9.1
   sqflite: ^2.4.2+1
   flutter_background_service: ^5.1.0
@@ -54,6 +50,8 @@ dependencies:
   shared_preferences: ^2.5.5
   package_info_plus: ^9.0.0
   url_launcher: ^6.3.2
+  device_info_plus: ^11.2.0
+  geolocator: ^13.0.2
 
 dev_dependencies:
   flutter_test:
@@ -90,8 +88,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    # app_icon.png = launcher (opaque). app_icon_logo.png = in-app (transparent).
-    - assets/icon/app_icon.png
+    # app_icon.png is for flutter_launcher_icons only (not loaded at runtime).
     - assets/icon/app_icon_logo.png
     - assets/data/food_nutrition_defaults.json
 

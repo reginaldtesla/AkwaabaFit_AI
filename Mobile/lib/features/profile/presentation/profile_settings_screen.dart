@@ -11,6 +11,7 @@ import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/auth/presentation/splash_screen.dart';
+import 'package:mobile/features/profile/presentation/accountability_partner_screen.dart';
 import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
 import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
@@ -491,8 +492,22 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   title: 'Activity Goal',
                   subtitle: stepGoalText,
                   trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
-                  showBorder: false,
+                  showBorder: true,
                   onTap: () => _editStepGoal(context, ref),
+                ),
+                _buildListTile(
+                  icon: Icons.people_outline,
+                  title: 'Accountability partner',
+                  subtitle: 'Link family or a friend',
+                  trailing: const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1), size: 20),
+                  showBorder: false,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AccountabilityPartnerScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

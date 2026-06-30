@@ -7,7 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
-import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/health/health_profile_options.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
 import 'package:mobile/shared/notifications/local_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,46 +40,19 @@ final healthProfileProvider =
     );
 
 class HealthProfileNotifier extends AsyncNotifier<void> {
-  final _dio = Dio(
-    BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: Duration(seconds: 10),
-      receiveTimeout: Duration(seconds: 10),
-    ),
-  );
   final _storage = const FlutterSecureStorage();
 
   @override
   Future<void> build() async {}
 
-  Future<bool> updateProfile({
-    required String name,
-    required bool isPublicOnLeaderboard,
-    int? age,
-    String? gender,
-    int? height,
-    int? weight,
-    String? activityLevel,
-  }) async {
+  Future<bool> updateProfile(Map<String, dynamic> data) async {
     state = const AsyncValue.loading();
     try {
       final token = await _storage.read(key: 'sanctum_token');
       if (token == null) {
-        // Still allow offline-first save; mark pending sync.
         state = const AsyncValue.data(null);
       }
 
-      final data = {
-        'name': name,
-        'is_public_on_leaderboard': isPublicOnLeaderboard,
-        if (age != null) 'age': age,
-        if (gender != null) 'gender': gender,
-        if (height != null) 'height': height,
-        if (weight != null) 'weight': weight,
-        if (activityLevel != null) 'activity_level': activityLevel,
-      };
-
-      // Offline-first: save locally first, then sync when possible.
       await ref.read(profileRepositoryProvider).saveAndSync(data);
 
       try {
@@ -93,8 +66,6 @@ class HealthProfileNotifier extends AsyncNotifier<void> {
       final message =
           e.response?.data['message'] ??
           'Failed to update profile. Please try again.';
-      // Keep the app seamless: we already cached locally. Mark error state but
-      // still return true so user can continue.
       state = AsyncValue.error(message, StackTrace.current);
       return true;
     }
@@ -132,6 +103,15 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   String? _selectedGender;
   String? _selectedActivityLevel;
   bool _isPublicOnLeaderboard = true;
+  int _onboardingStep = 0;
+
+  String? _selectedGoal;
+  final Set<String> _selectedConditions = {'None'};
+  String? _eatingPattern = 'Regular';
+  String? _lifeStage = 'General adult';
+  String? _mealSourcePreference = 'Mixed';
+  String? _activityContext = 'Mixed';
+  bool _mealRemindersEnabled = true;
 
   @override
   void initState() {
@@ -171,6 +151,21 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
       setState(() {
         _selectedGender = local['gender'] as String?;
         _selectedActivityLevel = local['activity_level'] as String?;
+        _selectedGoal = local['goal'] as String?;
+        _eatingPattern = local['eating_pattern'] as String? ?? _eatingPattern;
+        _lifeStage = local['life_stage'] as String? ?? _lifeStage;
+        _mealSourcePreference =
+            local['meal_source_preference'] as String? ?? _mealSourcePreference;
+        _activityContext =
+            local['activity_context'] as String? ?? _activityContext;
+        final conds = local['health_conditions'];
+        if (conds is List) {
+          _selectedConditions
+            ..clear()
+            ..addAll(conds.map((e) => e.toString()));
+        }
+        final reminders = local['meal_reminders_enabled'];
+        if (reminders is bool) _mealRemindersEnabled = reminders;
         final pub = local['is_public_on_leaderboard'];
         _isPublicOnLeaderboard = pub is bool ? pub : _isPublicOnLeaderboard;
       });
@@ -178,6 +173,15 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   }
 
   double get _formProgress {
+    if (_onboardingStep == 1) {
+      int done = 0;
+      if (_selectedGoal != null) done++;
+      if (_eatingPattern != null) done++;
+      if (_lifeStage != null) done++;
+      if (_mealSourcePreference != null) done++;
+      if (_activityContext != null) done++;
+      return (done / 5).clamp(0.0, 1.0);
+    }
     int completed = 0;
     const int total = 6;
 
@@ -203,40 +207,65 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_onboardingStep == 0) {
+      if (!_formKey.currentState!.validate()) return;
+      if (_selectedActivityLevel == null || _selectedGender == null) {
+        setState(() {});
+        return;
+      }
+      setState(() => _onboardingStep = 1);
+      return;
+    }
 
-    // Visual fields validation (not tied to TextFormField validators).
-    if (_selectedActivityLevel == null) {
+    if (_selectedGoal == null ||
+        _eatingPattern == null ||
+        _lifeStage == null ||
+        _mealSourcePreference == null ||
+        _activityContext == null) {
       setState(() {});
       return;
     }
 
+    final weight = int.tryParse(_weightController.text.trim());
+    final payload = <String, dynamic>{
+      'name': _nameController.text.trim(),
+      'is_public_on_leaderboard': _isPublicOnLeaderboard,
+      'age': int.tryParse(_ageController.text.trim()),
+      'gender': _selectedGender,
+      'height': int.tryParse(_heightController.text.trim()),
+      'weight': weight,
+      'activity_level': _selectedActivityLevel,
+      'goal': _selectedGoal,
+      'health_conditions': _selectedConditions.toList(),
+      'eating_pattern': _eatingPattern,
+      'life_stage': _lifeStage,
+      'meal_source_preference': _mealSourcePreference,
+      'activity_context': _activityContext,
+      'meal_reminders_enabled': _mealRemindersEnabled,
+      'profile_completed': true,
+      'water_goal_ml': HealthProfileOptions.defaultWaterGoalMl(weight),
+      'step_goal': HealthProfileOptions.ghanaStepGoal(
+        _activityContext!,
+        _selectedActivityLevel!,
+      ),
+    };
+
     final success = await ref
         .read(healthProfileProvider.notifier)
-        .updateProfile(
-          name: _nameController.text.trim(),
-          isPublicOnLeaderboard: _isPublicOnLeaderboard,
-          age: int.tryParse(_ageController.text.trim()),
-          gender: _selectedGender,
-          height: int.tryParse(_heightController.text.trim()),
-          weight: int.tryParse(_weightController.text.trim()),
-          activityLevel: _selectedActivityLevel,
-        );
+        .updateProfile(payload);
 
     if (!mounted) return;
 
     if (success) {
-      unawaited(
-        ref.read(localNotificationServiceProvider).scheduleDailyGoalReminder(
-              stepGoal:
-                  defaultStepGoalFromActivityLevel(_selectedActivityLevel),
-              calorieTarget: 0,
-            ),
-      );
+      final stepGoal = payload['step_goal'] as int? ?? 10000;
+      final notifications = ref.read(localNotificationServiceProvider);
+      unawaited(notifications.scheduleDailyGoalReminder(stepGoal: stepGoal));
+      if (_mealRemindersEnabled) {
+        unawaited(notifications.scheduleGhanaMealReminders());
+      }
       if (widget.isEditing) {
         Navigator.of(context).pop();
       } else {
-        // Navigate to main app
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const DashboardScreen()),
         );
@@ -286,7 +315,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
                     children: [
                       _buildHeader(),
                       const SizedBox(height: 32),
-                      _buildForm(),
+                      if (_onboardingStep == 0) _buildForm() else _buildAssistantForm(),
                       const SizedBox(height: 32),
                       _buildSubmitButton(profileState),
                       const SizedBox(height: 48),
@@ -347,7 +376,9 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Tell us about yourself — we’ll remind you each morning with a daily goal.',
+          _onboardingStep == 0
+              ? 'Tell us about yourself — height, weight, and how you move.'
+              : 'Help your health assistant coach you — goals, conditions, and daily routine.',
           style: GoogleFonts.inter(
             fontSize: 14,
             color: Colors.blueGrey.shade500,
@@ -604,6 +635,112 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
     );
   }
 
+  Widget _buildAssistantForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDropdownField(
+          label: 'WEIGHT GOAL',
+          hint: 'What do you want to achieve?',
+          value: _selectedGoal,
+          items: HealthProfileOptions.goals,
+          onChanged: (v) => setState(() => _selectedGoal = v),
+          icon: Icons.flag_outlined,
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'HEALTH CONDITIONS (select all that apply)',
+          style: GoogleFonts.inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Colors.blueGrey.shade600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: HealthProfileOptions.healthConditions.map((c) {
+            final selected = _selectedConditions.contains(c);
+            return FilterChip(
+              label: Text(c),
+              selected: selected,
+              onSelected: (_) {
+                setState(() {
+                  if (c == 'None') {
+                    _selectedConditions
+                      ..clear()
+                      ..add('None');
+                  } else {
+                    _selectedConditions.remove('None');
+                    if (selected) {
+                      _selectedConditions.remove(c);
+                    } else {
+                      _selectedConditions.add(c);
+                    }
+                    if (_selectedConditions.isEmpty) _selectedConditions.add('None');
+                  }
+                });
+              },
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 20),
+        _buildDropdownField(
+          label: 'EATING PATTERN',
+          hint: 'Regular or fasting?',
+          value: _eatingPattern,
+          items: HealthProfileOptions.eatingPatterns,
+          onChanged: (v) => setState(() => _eatingPattern = v),
+          icon: Icons.restaurant_outlined,
+        ),
+        const SizedBox(height: 20),
+        _buildDropdownField(
+          label: 'LIFE STAGE',
+          hint: 'Helps maternal & family tips',
+          value: _lifeStage,
+          items: HealthProfileOptions.lifeStages,
+          onChanged: (v) => setState(() => _lifeStage = v),
+          icon: Icons.family_restroom_outlined,
+        ),
+        const SizedBox(height: 20),
+        _buildDropdownField(
+          label: 'WHERE YOU EAT MOST',
+          hint: 'Chop bar or home?',
+          value: _mealSourcePreference,
+          items: HealthProfileOptions.mealSourcePreferences,
+          onChanged: (v) => setState(() => _mealSourcePreference = v),
+          icon: Icons.storefront_outlined,
+        ),
+        const SizedBox(height: 20),
+        _buildDropdownField(
+          label: 'DAILY ROUTINE',
+          hint: 'How you move in Ghana',
+          value: _activityContext,
+          items: HealthProfileOptions.activityContexts,
+          onChanged: (v) => setState(() => _activityContext = v),
+          icon: Icons.directions_walk_outlined,
+        ),
+        const SizedBox(height: 20),
+        _buildSwitchField(
+          label: 'MEAL-TIME REMINDERS',
+          subtitle: 'Waakye morning, lunch chop, lighter supper—timed for Ghana',
+          value: _mealRemindersEnabled,
+          onChanged: (v) => setState(() => _mealRemindersEnabled = v),
+        ),
+        if (_onboardingStep == 1 && !widget.isEditing)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: TextButton(
+              onPressed: () => setState(() => _onboardingStep = 0),
+              child: const Text('Back to basics'),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildSubmitButton(AsyncValue<void> state) {
     return SizedBox(
       width: double.infinity,
@@ -633,7 +770,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
                   const Icon(Icons.check_circle_outline, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'Complete Profile',
+                    _onboardingStep == 0 ? 'Continue' : 'Complete Profile',
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,

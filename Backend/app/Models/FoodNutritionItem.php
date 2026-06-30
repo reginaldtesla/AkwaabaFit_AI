@@ -8,6 +8,7 @@ class FoodNutritionItem extends Model
 {
     protected $fillable = [
         'class_name',
+        'preparation_type',
         'display_name',
         'calories',
         'protein_g',
@@ -31,6 +32,7 @@ class FoodNutritionItem extends Model
     {
         return [
             'className' => $this->class_name,
+            'preparationType' => $this->preparation_type,
             'displayName' => $this->display_name,
             'calories' => (int) $this->calories,
             'proteinG' => (int) $this->protein_g,

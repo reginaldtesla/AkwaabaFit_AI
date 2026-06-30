@@ -7,10 +7,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile/features/food_scan/data/food_nutrition_info.dart';
-import 'package:mobile/features/food_scan/data/food_scan_provider.dart';
-import 'package:mobile/features/food_scan/data/hybrid_nutrition_provider.dart';
+import 'package:mobile/features/food_scan/data/food_scan_api_service.dart';
+import 'package:mobile/features/food_scan/data/hybrid_nutrition_service.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
+import 'package:mobile/features/food_scan/data/not_food_scan_exception.dart';
+import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/nutrition/dietitian_advice.dart';
 import 'package:mobile/shared/nutrition/nutrition_refresh.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
@@ -137,7 +139,7 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
       }
       await _scanPath(image.path);
     } catch (e, st) {
-      state = AsyncValue.error(_friendlyError(e), st);
+      state = AsyncValue.error(_scanError(e), st);
     }
   }
 
@@ -155,7 +157,7 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
       }
       await _scanPath(picked.path);
     } catch (e, st) {
-      state = AsyncValue.error(_friendlyError(e), st);
+      state = AsyncValue.error(_scanError(e), st);
     }
   }
 
@@ -167,14 +169,19 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
 
     final api = ref.read(foodScanApiProvider);
     final scan = await api.scanImage(path);
-    if (scan.detections.isEmpty) {
-      throw StateError(
-        'No food detected. Try better lighting and center the plate.',
+    final minConf = AppConfig.minScanConfidence;
+    final detections = scan.detections
+        .where((d) => d.confidence >= minConf)
+        .toList();
+    if (detections.isEmpty) {
+      throw NotFoodScanException(
+        detail: scan.message ??
+            'Point your camera at a meal on a plate and scan again.',
       );
     }
 
     final items = <ScannedFoodItem>[];
-    for (final d in scan.detections.take(5)) {
+    for (final d in detections.take(5)) {
       final nutrition = await hybrid.resolve(d.className);
       items.add(
         ScannedFoodItem(
@@ -282,6 +289,20 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
   Future<void> logCurrentSelection() => logMeal();
 
   void clearScan() => clear();
+
+  Object _scanError(Object e) {
+    if (e is NotFoodScanException) return e;
+    return _friendlyError(e);
+  }
+
+  String _friendlyError(Object e) {
+    if (e is StateError) return e.message;
+    final raw = e.toString();
+    if (raw.contains('SocketException') || raw.contains('Connection')) {
+      return 'Could not reach the scan service. Check your connection.';
+    }
+    return raw.replaceFirst('Exception: ', '');
+  }
 
   Future<void> logMeal() async {
     final current = state.valueOrNull;
@@ -403,15 +424,6 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
         ],
       },
     };
-  }
-
-  String _friendlyError(Object e) {
-    if (e is StateError) return e.message;
-    final raw = e.toString();
-    if (raw.contains('SocketException') || raw.contains('Connection')) {
-      return 'Could not reach the scan service. Check your connection.';
-    }
-    return raw.replaceFirst('Exception: ', '');
   }
 }
 
@@ -604,21 +616,7 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
                     ),
                   ),
                 if (scanState.hasError)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Center(
-                        child: Text(
-                          scanState.error.toString(),
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: _buildScanError(scanState.error!)),
                 if (scanState.value != null && !scanState.isLoading)
                   _buildResultCard(context, ref, scanState.value!),
                 _buildBottomControls(scanState),
@@ -762,6 +760,91 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
     );
   }
 
+  Widget _buildScanError(Object error) {
+    final notFood = error is NotFoodScanException;
+    final title = notFood
+        ? error.title
+        : 'Could not scan';
+    final detail = notFood
+        ? error.detail
+        : error.toString();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.no_food_outlined,
+                color: Colors.white.withValues(alpha: 0.9),
+                size: 36,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                height: 1.3,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              detail,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                color: Colors.white.withValues(alpha: 0.82),
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            if (notFood) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Tip: hold the phone steady, use daylight if you can, and fill the frame with the plate.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () {
+                ref.read(foodScannerProvider.notifier).clearScan();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 14,
+                ),
+              ),
+              child: Text(
+                'Scan a meal',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildResultCard(
     BuildContext context,
     WidgetRef ref,
@@ -831,6 +914,41 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
                           style: GoogleFonts.inter(
                             fontSize: 11,
                             color: Colors.blueGrey.shade500,
+                          ),
+                        ),
+                      ],
+                      if (result.confidence > 0 &&
+                          result.confidence < 0.5) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.amber.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                size: 16,
+                                color: Colors.amber.shade800,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Low confidence — scan again with the meal centered and well lit.',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    color: Colors.amber.shade900,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -1014,52 +1132,31 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    onPressed: result.mealSaved || result.isRefiningNutrition
-                        ? null
-                        : () async {
-                            await ref
-                                .read(foodScannerProvider.notifier)
-                                .logCurrentSelection();
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: slate900,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 8,
-                    ),
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: Text(
-                      result.mealSaved ? 'SAVED' : 'LOG MEAL',
-                      style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-                    ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: result.mealSaved || result.isRefiningNutrition
+                    ? null
+                    : () async {
+                        await ref
+                            .read(foodScannerProvider.notifier)
+                            .logCurrentSelection();
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: slate900,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
+                  elevation: 8,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 1,
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueGrey.shade100,
-                      foregroundColor: Colors.blueGrey.shade600,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Icon(Icons.share),
-                  ),
+                icon: const Icon(Icons.add_circle_outline),
+                label: Text(
+                  result.mealSaved ? 'SAVED' : 'LOG MEAL',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.bold),
                 ),
-              ],
+              ),
             ),
           ),
         ],

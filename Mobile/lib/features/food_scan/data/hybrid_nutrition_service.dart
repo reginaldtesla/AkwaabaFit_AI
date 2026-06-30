@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/features/food_scan/data/food_nutrition_info.dart';
+import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 
 class HybridNutritionService {
@@ -123,3 +125,19 @@ class HybridNutritionService {
         .join(' ');
   }
 }
+
+final hybridNutritionProvider = FutureProvider<HybridNutritionService>((ref) async {
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: AppConfig.apiBaseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 90),
+    ),
+  );
+  return HybridNutritionService(
+    dio: dio,
+    storage: const FlutterSecureStorage(),
+    connectivity: Connectivity(),
+    dbFuture: SqliteOfflineDb.getInstance(),
+  );
+});

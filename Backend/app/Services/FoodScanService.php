@@ -111,7 +111,9 @@ class FoodScanService
 
         $hfBest = $hfRows[0] ?? null;
         if ($hfBest !== null && $hfBest['confidence'] >= $hfThreshold) {
-            $normalized = $this->normalizeRows($hfRows, self::GHANA_LABEL_ALIASES, 'ghana_classifier');
+            $normalized = $this->applyConfidenceFloor(
+                $this->normalizeRows($hfRows, self::GHANA_LABEL_ALIASES, 'ghana_classifier')
+            );
             if ($normalized !== []) {
                 return [
                     'provider' => 'hybrid',
@@ -122,22 +124,30 @@ class FoodScanService
         }
 
         $geminiRows = $this->scanGeminiFlash($image);
-        $geminiNorm = $this->normalizeRows($geminiRows, self::SLM_ALIASES, 'gemini_flash');
+        $geminiNorm = $this->applyConfidenceFloor(
+            $this->normalizeRows($geminiRows, self::SLM_ALIASES, 'gemini_flash')
+        );
 
         if ($geminiNorm !== []) {
             if ($hfBest !== null) {
-                $geminiNorm = $this->boostIfAgrees($hfBest, $geminiNorm);
+                $geminiNorm = $this->applyConfidenceFloor(
+                    $this->boostIfAgrees($hfBest, $geminiNorm)
+                );
             }
 
-            return [
-                'provider' => 'hybrid',
-                'strategy' => 'gemini_flash_fallback',
-                'detections' => $geminiNorm,
-            ];
+            if ($geminiNorm !== []) {
+                return [
+                    'provider' => 'hybrid',
+                    'strategy' => 'gemini_flash_fallback',
+                    'detections' => $geminiNorm,
+                ];
+            }
         }
 
         if ($hfBest !== null) {
-            $normalized = $this->normalizeRows($hfRows, self::GHANA_LABEL_ALIASES, 'ghana_classifier');
+            $normalized = $this->applyConfidenceFloor(
+                $this->normalizeRows($hfRows, self::GHANA_LABEL_ALIASES, 'ghana_classifier')
+            );
             if ($normalized !== []) {
                 return [
                     'provider' => 'hybrid',
@@ -238,10 +248,12 @@ class FoodScanService
                     [
                         'parts' => [
                             [
-                                'text' => 'Identify Ghanaian and West African foods on this plate. '
-                                    .'Return JSON only: {"foods":[{"name":"jollof","confidence":0.9}]} '
+                                'text' => 'Identify Ghanaian and West African foods visible in this image. '
+                                    .'If there is no food, or only non-food objects (people, furniture, packaging without food, empty plate), '
+                                    .'return JSON only: {"foods":[]}. '
+                                    .'Otherwise return JSON only: {"foods":[{"name":"jollof","confidence":0.9}]} '
                                     .'Use short English names (banku, fufu, waakye, kenkey, kelewele, kontomire, red red). '
-                                    .'confidence 0-1. Up to 5 items.',
+                                    .'confidence 0-1 reflects how sure you are it is food. Up to 5 items.',
                             ],
                             [
                                 'inline_data' => [
@@ -358,5 +370,19 @@ class FoodScanService
     private function titleCase(string $className): string
     {
         return Str::title(str_replace('-', ' ', $className));
+    }
+
+    /**
+     * @param  list<array{class_name: string, display_name: string, confidence: float, source: string}>  $detections
+     * @return list<array{class_name: string, display_name: string, confidence: float, source: string}>
+     */
+    private function applyConfidenceFloor(array $detections): array
+    {
+        $min = (float) config('services.food_scan.min_detection_confidence', 0.30);
+
+        return array_values(array_filter(
+            $detections,
+            static fn (array $row): bool => ($row['confidence'] ?? 0) >= $min
+        ));
     }
 }

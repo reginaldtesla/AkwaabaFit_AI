@@ -8,6 +8,8 @@ import 'package:mobile/features/profile/presentation/profile_settings_screen.dar
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/features/safety/data/safety_environment_advice.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/weather/dashboard_weather_merge.dart';
+import 'package:mobile/shared/weather/device_weather_service.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS
@@ -392,7 +394,13 @@ class HealthSafetyHubScreen extends ConsumerWidget {
   Widget _buildEnvironmentCard(WidgetRef ref, SafetyHubData data) {
     // Read weather from the same provider as the dashboard — avoids drift from
     // StateNotifier listen timing (Hub showed 30°C vs dashboard 29°C).
-    final dashSnapshot = ref.watch(dashboardDataProvider).valueOrNull;
+    final rawDash = ref.watch(dashboardDataProvider).valueOrNull;
+    final dashSnapshot = rawDash != null
+        ? applyDeviceWeatherToDashboard(
+            rawDash,
+            ref.watch(deviceWeatherProvider).valueOrNull,
+          )
+        : null;
     final tempDisplay = dashSnapshot != null
         ? dashSnapshot.tempCelsius.toInt()
         : data.temperatureCelsius;

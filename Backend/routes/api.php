@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountabilityController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\AdvisorConsultationApiController;
 use App\Http\Controllers\AppVersionController;
@@ -12,6 +13,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeviceTokenController;
 use App\Http\Controllers\DietitianApplicationApiController;
 use App\Http\Controllers\DietitianController;
+use App\Http\Controllers\HealthOptionsController;
+use App\Http\Controllers\HydrationController;
 use App\Http\Controllers\NutritionController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
@@ -22,6 +25,7 @@ use Illuminate\Support\Facades\URL;
 
 // Public Routes
 Route::get('/app/version', [AppVersionController::class, 'show']);
+Route::get('/health/options', [HealthOptionsController::class, 'index']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/forgot-password', [PasswordResetController::class, 'forgot']);
@@ -135,6 +139,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/nutrition/advice/meal', [NutritionController::class, 'mealAdvice']);
     Route::post('/nutrition/scan', [NutritionController::class, 'scan']);
     Route::get('/nutrition/history', [NutritionController::class, 'history']);
+    Route::get('/nutrition/foods/search', [NutritionController::class, 'searchFoods']);
+    Route::get('/nutrition/recent', [NutritionController::class, 'recentMeals']);
     Route::get('/nutrition/food', [NutritionController::class, 'food']);
     Route::get('/nutrition/foods', [NutritionController::class, 'foods']);
+
+    Route::get('/hydration/today', [HydrationController::class, 'today']);
+    Route::post('/hydration/log', [HydrationController::class, 'log']);
+
+    Route::get('/accountability', [AccountabilityController::class, 'show']);
+    Route::post('/accountability/link', [AccountabilityController::class, 'link']);
+    Route::delete('/accountability/partner', [AccountabilityController::class, 'unlink']);
 });

@@ -30,6 +30,8 @@
 	<string>AkwaabaFit AI needs photo access to select a meal image for nutrition analysis.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>AkwaabaFit AI uses motion access to count steps for activity tracking.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>AkwaabaFit uses your location to show local weather and safety tips for outdoor activity.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
