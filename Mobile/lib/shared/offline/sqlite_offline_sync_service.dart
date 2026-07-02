@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 
 class SqliteOfflineSyncService {
@@ -53,6 +54,7 @@ class SqliteOfflineSyncService {
               }),
             );
             await db.markOutboxSuccess(id);
+            LeaderboardRefreshBus.notify();
             break;
           case 'profile_patch':
             await dio.patch(

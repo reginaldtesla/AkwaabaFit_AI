@@ -153,7 +153,6 @@ flowchart LR
 
 - PHP 8.2+
 - Composer
-- Node.js & npm (Vite assets)
 - MySQL or PostgreSQL
 
 ### Mobile
@@ -178,13 +177,12 @@ Use this section if you received the project on a **USB drive** (or zip) instead
 | Item | What to do on the new computer |
 |------|--------------------------------|
 | PHP `vendor` folder | Run `composer install` again |
-| JavaScript `node_modules` | Run `npm install` again |
 | Backend environment file | Copy from sender **or** duplicate `.env.example` and fill in values |
 | Flutter build cache | Run `flutter pub get` (and `flutter clean` if builds fail) |
 | Database | Create empty DB and run migrations, **or** import a dump from the sender |
 | Uploaded files (avatars, dietitian documents) | Copy the sender’s storage folder **or** accept empty uploads on a fresh DB |
 
-If the USB copy included `vendor` or `node_modules` from another PC, it is often faster to **delete those folders** and reinstall with Composer/npm so binaries match your OS.
+If the USB copy included `vendor` from another PC, it is often faster to **delete that folder** and reinstall with Composer so binaries match your OS.
 
 ---
 
@@ -196,13 +194,12 @@ Install these **before** opening the project.
 |------|----------|--------|
 | **PHP 8.2+** | Laravel API | Enable extensions: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo` |
 | **Composer** | PHP packages | [getcomposer.org](https://getcomposer.org) |
-| **Node.js 18+** and **npm** | Frontend assets | [nodejs.org](https://nodejs.org) |
 | **MySQL 8** (or MariaDB) | Database | Create an empty database, e.g. `akwaabafit` |
 | **Flutter 3.10+** | Mobile app | [flutter.dev](https://flutter.dev) — then run `flutter doctor` and fix anything marked ✗ |
 | **Android Studio** | Android builds | SDK + a physical phone with USB debugging (emulators are blocked by the app) |
 | **Git** (optional) | Version control | Not required for USB setup |
 
-**Windows tips:** Add PHP, Composer, Node, and Flutter to your system **PATH**. Use **PowerShell** or **Command Prompt** for the commands below.
+**Windows tips:** Add PHP, Composer, and Flutter to your system **PATH**. Use **PowerShell** or **Command Prompt** for the commands below.
 
 ---
 
@@ -223,7 +220,6 @@ Open a terminal in the **Backend** folder and run **in order**:
 
 ```bash
 composer install
-npm install
 ```
 
 If you do not have a `.env` file yet:
@@ -340,7 +336,6 @@ flutter run --dart-define=API_BASE_URL=...
 |---------|-----|
 | `composer` or `php` not found | Install PHP/Composer and add to PATH; restart the terminal |
 | `class not found` / autoload errors | Run `composer install` in the Backend folder |
-| `Vite manifest not found` | Run `npm install` and `npm run build` in the Backend folder |
 | `SQLSTATE` / database connection | Check `.env` DB_* values; create the MySQL database; start MySQL service |
 | Login shows “Server Error” | Often MySQL stopped — start the `MySQL80` (or equivalent) service |
 | `No application encryption key` | Run `php artisan key:generate` |

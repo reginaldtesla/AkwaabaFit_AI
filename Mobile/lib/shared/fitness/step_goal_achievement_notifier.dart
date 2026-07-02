@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
+import 'package:mobile/shared/notifications/akwaaba_android_notifications.dart';
 import 'package:mobile/shared/notifications/notification_inbox.dart';
 
 /// Samsung Health–style alerts when the user hits their step goal (and optional daily targets).
@@ -37,7 +38,7 @@ abstract final class StepGoalAchievementNotifier {
   static Future<void> _ensureInitialized() async {
     if (_initialized) return;
     _plugin = FlutterLocalNotificationsPlugin();
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AkwaabaAndroidNotifications.initSettings;
     await _plugin!.initialize(settings: const InitializationSettings(android: androidInit));
 
     if (Platform.isAndroid) {
@@ -114,9 +115,9 @@ abstract final class StepGoalAchievementNotifier {
     await _ensureInitialized();
 
     final pct = goal > 0 ? ((steps * 100) / goal).round() : 100;
-    final title = '${formatSteps(steps)} steps';
+    final title = 'AkwaabaFit · Goal reached';
     final body =
-        "You've achieved $pct% of your step goal.";
+        '${formatSteps(steps)} steps — you\'ve achieved $pct% of your daily goal.';
 
     await prefs.setString(_stepReachedDayKey, today);
     await _show(
@@ -170,6 +171,20 @@ abstract final class StepGoalAchievementNotifier {
     );
   }
 
+  static AndroidNotificationDetails _achievementDetails(String body) {
+    return AkwaabaAndroidNotifications.details(
+      channelId: _channelId,
+      channelName: _channelName,
+      channelDescription: 'Step goal and daily activity achievements',
+      expandedBody: body,
+      importance: Importance.low,
+      priority: Priority.low,
+      playSound: false,
+      enableVibration: false,
+      onlyAlertOnce: true,
+    );
+  }
+
   static Future<void> _show({
     required int id,
     required String title,
@@ -186,17 +201,7 @@ abstract final class StepGoalAchievementNotifier {
       title: title,
       body: body,
       notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: 'Step goal and daily activity achievements',
-          importance: Importance.low,
-          priority: Priority.low,
-          playSound: false,
-          enableVibration: false,
-          onlyAlertOnce: true,
-          styleInformation: BigTextStyleInformation(body),
-        ),
+        android: _achievementDetails(body),
       ),
     );
   }

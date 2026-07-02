@@ -14,7 +14,7 @@ import 'package:mobile/features/auth/presentation/splash_screen.dart';
 import 'package:mobile/features/profile/presentation/accountability_partner_screen.dart';
 import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
-import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
+import 'package:mobile/shared/fitness/leaderboard_provider.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/config/app_config.dart';
@@ -91,6 +91,15 @@ final genderProvider = FutureProvider<String?>((ref) async {
   final v = current?['gender'];
   final s = (v ?? '').toString().trim();
   return s.isEmpty ? null : s;
+});
+
+final publicLeaderboardProvider = FutureProvider<bool>((ref) async {
+  final repo = ref.read(profileRepositoryProvider);
+  final current = await repo.readLocalProfile();
+  final v = current?['is_public_on_leaderboard'];
+  if (v is bool) return v;
+  if (v is int) return v == 1;
+  return v?.toString() == '1' || v == true;
 });
 
 class ProfileNotifier extends StateNotifier<AsyncValue<UserProfile>> {
@@ -661,6 +670,8 @@ class ProfileSettingsScreen extends ConsumerWidget {
   }
 
   Widget _buildAccountSafety(BuildContext context, WidgetRef ref, UserProfile data) {
+    final publicLb = ref.watch(publicLeaderboardProvider);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -671,6 +682,49 @@ class ProfileSettingsScreen extends ConsumerWidget {
             decoration: _cardDecoration(),
             child: Column(
               children: [
+                publicLb.when(
+                  loading: () => const ListTile(
+                    title: Text('Public leaderboard'),
+                    subtitle: Text('Loading…'),
+                  ),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (enabled) => SwitchListTile(
+                    title: Text(
+                      'Public leaderboard',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        color: textDark,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'Show your name and steps on Today / This month rankings',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: textLight,
+                      ),
+                    ),
+                    value: enabled,
+                    activeThumbColor: primary,
+                    onChanged: (value) async {
+                      final repo = ref.read(profileRepositoryProvider);
+                      await repo.saveAndSync({
+                        'is_public_on_leaderboard': value,
+                      });
+                      ref.invalidate(publicLeaderboardProvider);
+                      ref.invalidate(leaderboardProvider);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            value
+                                ? 'You joined the public leaderboard'
+                                : 'You left the public leaderboard',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
                 InkWell(
                   onTap: () async {
                     await Navigator.of(context).push(

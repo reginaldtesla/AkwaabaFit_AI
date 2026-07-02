@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:mobile/shared/notifications/akwaaba_android_notifications.dart';
 import 'package:mobile/shared/notifications/notification_inbox.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 
@@ -35,7 +36,7 @@ class LocalNotificationService {
       tz.setLocalLocation(tz.getLocation('Africa/Accra'));
     } catch (_) {}
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AkwaabaAndroidNotifications.initSettings;
     const initSettings = InitializationSettings(android: androidInit);
 
     await _plugin.initialize(settings: initSettings);
@@ -312,14 +313,14 @@ class LocalNotificationService {
   }
 
   AndroidNotificationDetails _androidReminderDetails(String expandedBody) {
-    return AndroidNotificationDetails(
-      _channelId,
-      _channelName,
+    return AkwaabaAndroidNotifications.details(
+      channelId: _channelId,
+      channelName: _channelName,
       channelDescription: 'Daily goals, step reminders, and wellness nudges',
+      expandedBody: expandedBody,
       importance: Importance.max,
       priority: Priority.high,
       color: const Color(0xFF43C763),
-      styleInformation: BigTextStyleInformation(expandedBody),
     );
   }
 }

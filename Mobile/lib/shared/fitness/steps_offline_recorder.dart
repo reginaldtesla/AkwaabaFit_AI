@@ -2,6 +2,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 
 /// Persists today's steps locally and syncs-or-queues `POST /activity/hourly/log`.
@@ -95,6 +96,7 @@ class StepsOfflineRecorder {
       ).post('/activity/hourly/log', data: {'step_count': steps});
       _lastDirectPostAt = now;
       await db.deletePendingActivityHourlyOutbox();
+      LeaderboardRefreshBus.notify();
     } catch (_) {
       await db.replacePendingActivityHourlyOutbox({'step_count': steps});
     }

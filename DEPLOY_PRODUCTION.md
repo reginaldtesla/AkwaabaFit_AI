@@ -23,6 +23,22 @@ Ensure `.env` on the server includes:
 APP_URL=https://api.tesnet.xyz
 GEMINI_API_KEY=your_key
 HUGGINGFACE_API_TOKEN=your_token
+# Optional landing page CTAs:
+# LANDING_APK_URL=https://api.tesnet.xyz/downloads/akwaabafit.apk
+# LANDING_BETA_FORM_ACTION=
+# LANDING_SUPPORT_EMAIL=support@akwaabafit.com
+```
+
+Visiting **https://api.tesnet.xyz/** (no `/api`) serves the AkwaabaFit marketing landing page. Mobile API routes stay under **/api/**.
+
+After deploy, clear cached views if the homepage still shows the old Laravel welcome screen:
+
+```bash
+php artisan view:clear
+php artisan route:clear
+php artisan config:clear
+php artisan config:cache
+php artisan route:cache
 ```
 
 ## 2. Verify API

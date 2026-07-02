@@ -9,9 +9,7 @@ use App\Http\Controllers\DietitianApplicationAdminController;
 use App\Http\Controllers\DietitianApplicationPortalController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+Route::view('/', 'landing')->name('landing');
 
 // Public portal accessed from mobile via signed link.
 // Use a relative signature so local/LAN hosts work in dev.

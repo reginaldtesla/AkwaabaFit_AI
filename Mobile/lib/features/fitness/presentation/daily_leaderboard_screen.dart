@@ -1,286 +1,20 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:dio/dio.dart';
-import 'package:mobile/shared/connectivity/connectivity_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
-import 'package:mobile/shared/config/app_config.dart';
+import 'package:mobile/shared/connectivity/connectivity_utils.dart';
+import 'package:mobile/shared/fitness/leaderboard_provider.dart';
+import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
-import 'package:mobile/shared/profile/profile_repository.dart';
 
-// =====================================================================
-// 1. STATE MANAGEMENT & DATA MODELS
-// =====================================================================
-
-class LeaderboardUser {
-  final String id;
-  final int rank;
-  final String name;
-  final String location;
-  final int steps;
-  final String imageUrl;
-  final bool isCurrentUser;
-
-  LeaderboardUser({
-    required this.id,
-    required this.rank,
-    required this.name,
-    required this.location,
-    required this.steps,
-    required this.imageUrl,
-    this.isCurrentUser = false,
-  });
-}
-
-bool _mapLooksLikeLeaderboardRow(Map<String, dynamic> row) {
-  return row.containsKey('total_steps') ||
-      row.containsKey('step_count') ||
-      (row.containsKey('id') && row.containsKey('name'));
-}
-
-/// Normalizes diverse API shapes (pagination wrappers, nested `data`, numeric-key
-/// objects, JSON strings, etc.) into a flat list of row maps. Never throws.
-List<Map<String, dynamic>> _coerceLeaderboardRowMaps(dynamic node) {
-  if (node == null) return [];
-
-  if (node is String) {
-    final trimmed = node.trim();
-    if (trimmed.isEmpty) return [];
-    try {
-      return _coerceLeaderboardRowMaps(jsonDecode(trimmed));
-    } catch (_) {
-      return [];
-    }
-  }
-
-  if (node is List) {
-    final out = <Map<String, dynamic>>[];
-    for (final item in node) {
-      if (item is Map) {
-        out.add(item.map((k, v) => MapEntry(k.toString(), v)));
-      }
-    }
-    return out;
-  }
-
-  if (node is! Map) return [];
-
-  final m = node.map((k, v) => MapEntry(k.toString(), v));
-
-  for (final key in [
-    'data',
-    'items',
-    'results',
-    'rows',
-    'records',
-    'entries',
-    'leaderboard',
-    'users',
-  ]) {
-    final v = m[key];
-    if (v is List) {
-      final nested = _coerceLeaderboardRowMaps(v);
-      if (nested.isNotEmpty) return nested;
-    }
-    if (v is Map) {
-      final nested = _coerceLeaderboardRowMaps(v);
-      if (nested.isNotEmpty) return nested;
-    }
-  }
-
-  final ints = <int>[];
-  var allNumericKeys = true;
-  for (final k in m.keys) {
-    final n = int.tryParse(k);
-    if (n == null) {
-      allNumericKeys = false;
-      break;
-    }
-    ints.add(n);
-  }
-  if (allNumericKeys && ints.isNotEmpty) {
-    ints.sort();
-    final out = <Map<String, dynamic>>[];
-    for (final n in ints) {
-      final v = m[n.toString()];
-      if (v is Map) {
-        out.add(v.map((k, val) => MapEntry(k.toString(), val)));
-      }
-    }
-    return out;
-  }
-
-  if (_mapLooksLikeLeaderboardRow(m)) return [m];
-
-  final gathered = <Map<String, dynamic>>[];
-  for (final v in m.values) {
-    if (v is Map) {
-      final row = v.map((k, val) => MapEntry(k.toString(), val));
-      if (_mapLooksLikeLeaderboardRow(row)) gathered.add(row);
-    }
-  }
-  return gathered;
-}
-
-List<Map<String, dynamic>> _leaderboardRowsFromEnvelope(Map<String, dynamic> json) {
-  final fromData = _coerceLeaderboardRowMaps(json['data']);
-  if (fromData.isNotEmpty) return fromData;
-  return _coerceLeaderboardRowMaps(json);
-}
-
-int _parseLeaderboardInt(dynamic value, {int fallback = 0}) {
-  if (value == null) return fallback;
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  if (value is String) return int.tryParse(value.trim()) ?? fallback;
-  return fallback;
-}
-
-int? _parseLeaderboardIntOrNull(dynamic value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  if (value is String) return int.tryParse(value.trim());
-  return null;
-}
-
-final leaderboardProvider = FutureProvider<List<LeaderboardUser>>((ref) async {
-  const storage = FlutterSecureStorage();
-  final token = await storage.read(key: 'sanctum_token');
-  if (token == null || token.isEmpty) {
-    throw Exception('Missing auth token. Please login again.');
-  }
-
-  if (!await isDeviceOnline()) {
-    throw Exception('LEADERBOARD_OFFLINE');
-  }
-
-  final base = AppConfig.apiBaseUrl.endsWith('/')
-      ? AppConfig.apiBaseUrl
-      : '${AppConfig.apiBaseUrl}/';
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: base,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    ),
-  );
-
-  // Local profile gives us the current user id/name if available.
-  final localProfile = await ref.read(profileRepositoryProvider).readLocalProfile();
-  final currentUserIdRaw = localProfile?['id'] ?? localProfile?['user_id'];
-  final currentUserId = currentUserIdRaw?.toString();
-
-  // Always fetch "me" rank (cheap) so we can highlight/append user.
-  Map<String, dynamic>? me;
-  try {
-    // Important: do NOT prefix with "/" or Dio will drop the "/api" base path.
-    final meResp = await dio.get('leaderboard/daily/me');
-    if (meResp.data is Map) {
-      me = (meResp.data as Map).map((k, v) => MapEntry(k.toString(), v));
-    }
-  } catch (_) {
-    me = null;
-  }
-
-  String ymdMonth(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}';
-
-  Future<Map<String, dynamic>> fetchBoard(DateTime monthAnchor) async {
-    final resp = await dio.get(
-      'leaderboard/daily',
-      queryParameters: {'month': ymdMonth(monthAnchor)},
-    );
-    final raw = resp.data;
-    if (raw is List) {
-      return {'data': raw};
-    }
-    if (raw is String) {
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is List) return {'data': decoded};
-        if (decoded is Map) {
-          return decoded.map((k, v) => MapEntry(k.toString(), v));
-        }
-      } catch (_) {
-        // Fall through.
-      }
-      throw Exception('Unexpected leaderboard response.');
-    }
-    if (raw is! Map) throw Exception('Unexpected leaderboard response.');
-    return raw.map((k, v) => MapEntry(k.toString(), v));
-  }
-
-  // Current calendar month (resets on the 1st).
-  final json = await fetchBoard(DateTime.now());
-  final list = _leaderboardRowsFromEnvelope(json);
-
-  final users = <LeaderboardUser>[];
-  for (var i = 0; i < list.length; i++) {
-    final row = list[i];
-    final id = (row['id'] ?? '').toString();
-    final name = (row['name'] ?? '').toString();
-    final steps = _parseLeaderboardInt(row['total_steps'],
-        fallback: _parseLeaderboardInt(row['step_count']));
-    final avatarRaw = (row['avatar_url'] ?? row['avatarUrl'])?.toString() ?? '';
-    final avatarUrl = avatarRaw.isEmpty ? '' : AppConfig.normalizeUrlForDevice(avatarRaw);
-    final location = (row['location'] ?? '').toString();
-    final isMe = currentUserId != null && id == currentUserId;
-    users.add(
-      LeaderboardUser(
-        id: id,
-        rank: i + 1,
-        name: isMe ? 'You' : name,
-        location: location,
-        steps: steps,
-        imageUrl: avatarUrl,
-        isCurrentUser: isMe,
-      ),
-    );
-  }
-
-  // If I'm opted-in and not in the top 50, append my rank line so I still see it.
-  final optedIn = (me?['optedIn'] == true);
-  final meUser = me?['user'];
-  final meId = (meUser is Map ? meUser['id'] : null)?.toString() ?? currentUserId;
-  final meAvatarRaw = (meUser is Map ? (meUser['avatar_url'] ?? meUser['avatarUrl']) : null)
-          ?.toString() ??
-      '';
-  final meAvatarUrl =
-      meAvatarRaw.isEmpty ? '' : AppConfig.normalizeUrlForDevice(meAvatarRaw);
-  final meLocation = (meUser is Map ? meUser['location'] : null)?.toString() ?? '';
-  final meRank = _parseLeaderboardIntOrNull(me?['rank']);
-  final meSteps = _parseLeaderboardIntOrNull(me?['stepsThisMonth']) ??
-      _parseLeaderboardIntOrNull(me?['stepsToday']);
-  final alreadyInTop = users.any((u) => u.id == meId);
-  if (optedIn && meId != null && meRank != null && meSteps != null && !alreadyInTop) {
-    users.add(
-      LeaderboardUser(
-        id: meId,
-        rank: meRank,
-        name: 'You',
-        location: meLocation.isNotEmpty ? meLocation : 'Your rank',
-        steps: meSteps,
-        imageUrl: meAvatarUrl,
-        isCurrentUser: true,
-      ),
-    );
-  }
-
-  return users;
-});
+export 'package:mobile/shared/fitness/leaderboard_provider.dart'
+    show LeaderboardUser, leaderboardProvider;
 
 // =====================================================================
 // 2. THE UI SCREEN
@@ -309,50 +43,76 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
   static const Color goldDeep = Color(0xFFD97706);
 
   late Timer _timer;
+  StreamSubscription<void>? _refreshSub;
   Duration _timeLeft = Duration.zero;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _meRowKey = GlobalKey();
   bool _didAutoScrollToMe = false;
-  /// Tracks calendar month so we refresh leaderboard at month rollover.
   int? _lastLocalMonthKey;
+  String? _lastLocalDayKey;
 
   int _localMonthKey(DateTime d) => d.year * 100 + d.month;
 
+  String _localDayKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
   Future<bool> _isOnline() async => isDeviceOnline();
+
+  void _bumpLeaderboardRefresh() {
+    ref.read(leaderboardRefreshTickProvider.notifier).state++;
+    ref.invalidate(leaderboardProvider);
+  }
 
   @override
   void initState() {
     super.initState();
-    _lastLocalMonthKey = _localMonthKey(DateTime.now());
-    _timeLeft = _untilEndOfMonth();
+    final now = DateTime.now();
+    _lastLocalMonthKey = _localMonthKey(now);
+    _lastLocalDayKey = _localDayKey(now);
+    _timeLeft = _untilEndOfPeriod(ref.read(leaderboardPeriodProvider));
+    _refreshSub = LeaderboardRefreshBus.stream.listen((_) {
+      if (!mounted) return;
+      _bumpLeaderboardRefresh();
+    });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      final now = DateTime.now();
-      final monthKey = _localMonthKey(now);
+      final tick = DateTime.now();
+      final monthKey = _localMonthKey(tick);
+      final dayKey = _localDayKey(tick);
       if (_lastLocalMonthKey != null && monthKey != _lastLocalMonthKey) {
-        ref.invalidate(leaderboardProvider);
+        _bumpLeaderboardRefresh();
+        _didAutoScrollToMe = false;
+      }
+      if (_lastLocalDayKey != null && dayKey != _lastLocalDayKey) {
+        _bumpLeaderboardRefresh();
         _didAutoScrollToMe = false;
       }
       _lastLocalMonthKey = monthKey;
-      setState(() => _timeLeft = _untilEndOfMonth());
+      _lastLocalDayKey = dayKey;
+      setState(
+        () => _timeLeft = _untilEndOfPeriod(ref.read(leaderboardPeriodProvider)),
+      );
     });
   }
 
   @override
   void dispose() {
     _timer.cancel();
+    _refreshSub?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Duration _untilEndOfMonth() {
+  Duration _untilEndOfPeriod(LeaderboardPeriod period) {
     final now = DateTime.now();
+    if (period == LeaderboardPeriod.day) {
+      final midnight = DateTime(now.year, now.month, now.day + 1);
+      final d = midnight.difference(now);
+      return d <= Duration.zero ? Duration.zero : d;
+    }
     final nextMonth = DateTime(now.year, now.month + 1, 1);
     final d = nextMonth.difference(now);
-    if (d <= Duration.zero) {
-      return Duration.zero;
-    }
-    return d;
+    return d <= Duration.zero ? Duration.zero : d;
   }
 
   String get _monthLabel {
@@ -362,6 +122,14 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
     ];
     final now = DateTime.now();
     return '${months[now.month - 1]} ${now.year}';
+  }
+
+  String get _periodSubtitle {
+    final period = ref.watch(leaderboardPeriodProvider);
+    if (period == LeaderboardPeriod.day) {
+      return 'Today\'s steps • resets at midnight';
+    }
+    return '$_monthLabel • Monthly steps';
   }
 
   String get _formattedTimeLeft {
@@ -436,7 +204,8 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
               ),
             );
           },
-          data: (users) {
+          data: (snapshot) {
+            final users = snapshot.users;
             if (users.isEmpty) {
               return Center(
                 child: Text(
@@ -510,6 +279,31 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
                     child: _buildHeader(context),
                   ),
                 ),
+                if (snapshot.fromCache)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade100),
+                        ),
+                        child: Text(
+                          'Showing last saved rankings — pull down to refresh when online.',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (showNotOnBoardBanner)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -648,103 +442,134 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
   // --- UI Components ---
 
   Widget _buildHeader(BuildContext context) {
-    return Row(
+    final period = ref.watch(leaderboardPeriodProvider);
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => Navigator.of(context).maybePop(),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.blueGrey.shade50,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.blueGrey.shade100),
-            ),
-            child: Icon(Icons.arrow_back, color: Colors.blueGrey.shade700, size: 20),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Leaderboard',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: textDark,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '$_monthLabel • Monthly steps',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: slateCustom,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: secondaryBlue.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(999),
-                border:
-                    Border.all(color: secondaryBlue.withValues(alpha: 0.18)),
+            GestureDetector(
+              onTap: () => Navigator.of(context).maybePop(),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.blueGrey.shade50,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.blueGrey.shade100),
+                ),
+                child: Icon(Icons.arrow_back, color: Colors.blueGrey.shade700, size: 20),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.timer_outlined,
-                      size: 16, color: Colors.blueGrey.shade700),
-                  const SizedBox(width: 6),
                   Text(
-                    _formattedTimeLeft,
+                    'Leaderboard',
                     style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
                       color: textDark,
-                      letterSpacing: 0.6,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _periodSubtitle,
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: slateCustom,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: gold.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: gold.withValues(alpha: 0.25)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.emoji_events_rounded,
-                      size: 16, color: goldDeep),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Top 50',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: goldDeep,
-                    ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: secondaryBlue.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border:
+                        Border.all(color: secondaryBlue.withValues(alpha: 0.18)),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.timer_outlined,
+                          size: 16, color: Colors.blueGrey.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formattedTimeLeft,
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: textDark,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: gold.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: gold.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.emoji_events_rounded,
+                          size: 16, color: goldDeep),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Top 50',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: goldDeep,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<LeaderboardPeriod>(
+            segments: const [
+              ButtonSegment(
+                value: LeaderboardPeriod.day,
+                label: Text('Today'),
+              ),
+              ButtonSegment(
+                value: LeaderboardPeriod.month,
+                label: Text('This month'),
+              ),
+            ],
+            selected: {period},
+            onSelectionChanged: (selected) {
+              final next = selected.first;
+              ref.read(leaderboardPeriodProvider.notifier).state = next;
+              _didAutoScrollToMe = false;
+              setState(() => _timeLeft = _untilEndOfPeriod(next));
+              ref.invalidate(leaderboardProvider);
+            },
+          ),
         ),
       ],
     );

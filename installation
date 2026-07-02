@@ -99,7 +99,6 @@ Open **PowerShell**:
 cd C:\Apache24\htdocs\AkwaabaFitAIProject\Backend
 
 composer install
-npm install
 copy .env.example .env
 php artisan key:generate
 ```
@@ -122,7 +121,6 @@ Run migrations and seed food data:
 php artisan migrate
 php artisan db:seed
 php artisan storage:link
-npm run build
 ```
 
 Start the API:
@@ -297,7 +295,7 @@ Copy `C:\Apache24\htdocs\AkwaabaFitAIProject` to `/var/www/AkwaabaFitAIProject` 
 
 - `AI/venv/`
 - `Mobile/build/`
-- `Backend/vendor/` or `node_modules/` (reinstall on server)
+- `Backend/vendor/` (reinstall on server)
 
 ### 5.2 Install dependencies
 
@@ -305,8 +303,6 @@ Copy `C:\Apache24\htdocs\AkwaabaFitAIProject` to `/var/www/AkwaabaFitAIProject` 
 cd /var/www/AkwaabaFitAIProject/Backend
 
 composer install --no-dev --optimize-autoloader
-npm install
-npm run build
 ```
 
 ### 5.3 Environment file
@@ -714,7 +710,6 @@ After deploy, verify each row:
 |---------|-----|
 | `500` on all pages | `storage/` permissions; `php artisan config:clear`; read `storage/logs/laravel.log` |
 | `SQLSTATE` connection error | Check `.env` `DB_*`; database exists; user granted |
-| `Vite manifest not found` | Run `npm install && npm run build` on server |
 | Mobile “network error” | Use HTTPS production URL, not LAN IP, on physical phones |
 | Paystack paid, no session update | Webhook URL must be HTTPS; check `laravel.log` and Paystack webhook logs |
 | Push not working | FCM JSON path; queue worker running |
@@ -738,7 +733,6 @@ php artisan test
 cd /var/www/AkwaabaFitAIProject/Backend
 git pull
 composer install --no-dev --optimize-autoloader
-npm ci && npm run build
 php artisan migrate --force
 php artisan config:cache
 php artisan route:cache

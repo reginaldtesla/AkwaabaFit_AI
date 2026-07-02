@@ -21,7 +21,7 @@ class SqliteOfflineDb {
     final path = p.join(dbPath, 'akwaaba_offline.db');
     final db = await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE profile_cache (
@@ -97,6 +97,14 @@ class SqliteOfflineDb {
 
         await db.execute('''
           CREATE TABLE weather_cache (
+            key TEXT PRIMARY KEY,
+            json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        ''');
+
+        await db.execute('''
+          CREATE TABLE leaderboard_cache (
             key TEXT PRIMARY KEY,
             json TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -185,6 +193,14 @@ class SqliteOfflineDb {
             updated_at TEXT NOT NULL
           );
         ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS leaderboard_cache (
+            key TEXT PRIMARY KEY,
+            json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -252,6 +268,15 @@ class SqliteOfflineDb {
         if (oldVersion < 6) {
           await db.execute('''
             CREATE TABLE IF NOT EXISTS weather_cache (
+              key TEXT PRIMARY KEY,
+              json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+          ''');
+        }
+        if (oldVersion < 7) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS leaderboard_cache (
               key TEXT PRIMARY KEY,
               json TEXT NOT NULL,
               updated_at TEXT NOT NULL
@@ -838,7 +863,38 @@ class SqliteOfflineDb {
       await txn.rawDelete('DELETE FROM profile_cache');
       await txn.rawDelete('DELETE FROM outbox');
       await txn.rawDelete('DELETE FROM nutrition_food_cache');
+      await txn.rawDelete('DELETE FROM leaderboard_cache');
     });
+  }
+
+  Future<void> putLeaderboardCache(String key, Map<String, dynamic> json) async {
+    await _db.insert(
+      'leaderboard_cache',
+      {
+        'key': key,
+        'json': jsonEncode(json),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<Map<String, dynamic>?> getLeaderboardCache(String key) async {
+    final rows = await _db.query(
+      'leaderboard_cache',
+      columns: ['json'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(rows.first['json'] as String);
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v));
+      }
+    } catch (_) {}
+    return null;
   }
 }
 
