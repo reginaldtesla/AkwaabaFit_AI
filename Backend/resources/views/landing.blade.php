@@ -667,7 +667,7 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <div class="eyebrow">Made in Ghana, for Ghana</div>
+          <!-- <div class="eyebrow">Made in Ghana, for Ghana</div> -->
           <h1>Welcome to wellness that <em>actually</em> fits your plate.</h1>
           <p class="hero-lead">
             AkwaabaFit is a mobile health app for everyday life here — track your steps, scan jollof and banku with AI, and get practical coaching that respects local food, weather, and busy schedules.
