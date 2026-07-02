@@ -934,7 +934,7 @@
       </div>
       <div class="footer-links">
         <a href="mailto:{{ config('landing.support_email') }}">{{ config('landing.support_email') }}</a>
-        <a href="{{ url('/api') }}" target="_blank" rel="noopener">API</a>
+        <!-- <a href="{{ url('/api') }}" target="_blank" rel="noopener">API</a> -->
         <a href="#vision">Vision</a>
         <a href="#features">Features</a>
       </div>
