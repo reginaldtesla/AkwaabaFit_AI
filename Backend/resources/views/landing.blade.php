@@ -917,7 +917,7 @@
           @else
           <div class="cta-form">
             <p class="cta-fine" style="opacity: 0.95;">Beta signup opens soon. For now, install the APK when it’s available or email us below.</p>
-            <a class="btn btn-primary" href="mailto:{{ config('landing.support_email') }}">Email the team</a>
+            <a class="btn btn-primary" href="{{ \App\Support\LandingLinks::supportMailto() }}">Email the team</a>
           </div>
           @endif
         </div>
@@ -933,7 +933,7 @@
         © 2026 · Reginald, Bernard &amp; Klenam
       </div>
       <div class="footer-links">
-        <a href="mailto:{{ config('landing.support_email') }}">{{ config('landing.support_email') }}</a>
+        <a href="{{ \App\Support\LandingLinks::supportMailto() }}">{{ config('landing.support_email') }}</a>
         <!-- <a href="{{ url('/api') }}" target="_blank" rel="noopener">API</a> -->
         <a href="#vision">Vision</a>
         <a href="#features">Features</a>
