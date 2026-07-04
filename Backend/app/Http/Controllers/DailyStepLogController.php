@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SyncStepsRequest;
 use App\Models\DailyStepLog;
 use App\Models\User;
+use App\Support\LeaderboardCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -15,12 +16,12 @@ class DailyStepLogController extends Controller
 {
     private function monthlyCacheKey(string $month): string
     {
-        return 'monthly_leaderboard:'.$month;
+        return LeaderboardCache::monthlyKey($month);
     }
 
     private function dailyCacheKey(string $date): string
     {
-        return 'daily_leaderboard:'.$date;
+        return LeaderboardCache::dailyKey($date);
     }
 
     private function currentMonthKey(): string
@@ -77,8 +78,7 @@ class DailyStepLogController extends Controller
 
     private function forgetLeaderboardCaches(): void
     {
-        Cache::forget($this->monthlyCacheKey($this->currentMonthKey()));
-        Cache::forget($this->dailyCacheKey($this->currentDateKey()));
+        LeaderboardCache::forgetCurrent();
     }
 
     /**
@@ -175,6 +175,7 @@ class DailyStepLogController extends Controller
             ->whereDate('daily_step_logs.log_date', '>=', $startDate)
             ->whereDate('daily_step_logs.log_date', '<=', $endDate)
             ->groupBy('users.id', 'users.name', 'users.avatar_url')
+            ->havingRaw($sumSteps ? 'SUM(daily_step_logs.step_count) > 0' : 'MAX(daily_step_logs.step_count) > 0')
             ->orderByDesc('total_steps')
             ->orderBy('users.id')
             ->limit(50)
@@ -323,10 +324,12 @@ class DailyStepLogController extends Controller
 
         $totalUsers = (int) DB::query()
             ->fromSub($totals, 'leaderboard_totals')
+            ->where('total_steps', '>', 0)
             ->count();
 
         $above = (int) DB::query()
             ->fromSub($totals, 'leaderboard_totals')
+            ->where('total_steps', '>', 0)
             ->where('total_steps', '>', $userSteps)
             ->count();
 

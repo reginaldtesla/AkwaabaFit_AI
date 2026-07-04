@@ -176,7 +176,7 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
     if (detections.isEmpty) {
       throw NotFoodScanException(
         detail: scan.message ??
-            'Point your camera at a meal on a plate and scan again.',
+            "This doesn't look like food. Point your camera at a meal on a plate and scan again.",
       );
     }
 
@@ -292,14 +292,23 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
 
   Object _scanError(Object e) {
     if (e is NotFoodScanException) return e;
-    return _friendlyError(e);
+    final msg = _friendlyError(e);
+    if (msg.contains("doesn't look like food") ||
+        msg.contains('Point your camera at a meal')) {
+      return NotFoodScanException(detail: msg);
+    }
+    return msg;
   }
 
   String _friendlyError(Object e) {
+    if (e is NotFoodScanException) return e.detail;
     if (e is StateError) return e.message;
     final raw = e.toString();
     if (raw.contains('SocketException') || raw.contains('Connection')) {
       return 'Could not reach the scan service. Check your connection.';
+    }
+    if (raw.contains('DioException')) {
+      return "This doesn't look like food. Point your camera at a meal on a plate and scan again.";
     }
     return raw.replaceFirst('Exception: ', '');
   }
@@ -767,7 +776,9 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
         : 'Could not scan';
     final detail = notFood
         ? error.detail
-        : error.toString();
+        : (error is String
+            ? error
+            : "This doesn't look like food. Point your camera at a meal on a plate and scan again.");
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 28),

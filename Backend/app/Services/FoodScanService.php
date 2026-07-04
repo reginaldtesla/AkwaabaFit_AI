@@ -5,7 +5,6 @@ namespace App\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use RuntimeException;
 
 /**
  * Hybrid Ghana food scan:
@@ -171,7 +170,7 @@ class FoodScanService
     {
         $token = trim((string) config('services.food_scan.huggingface_token', ''));
         if ($token === '') {
-            throw new RuntimeException('HUGGINGFACE_API_TOKEN is not configured for Ghana food classification.');
+            return [];
         }
 
         $model = (string) config(
@@ -179,50 +178,53 @@ class FoodScanService
             'Kennethdot/convnext_finetuned_ghanaian_food'
         );
 
-        $bytes = (string) file_get_contents($image->getRealPath());
-        $mime = $image->getMimeType() ?: 'image/jpeg';
+        try {
+            $bytes = (string) file_get_contents($image->getRealPath());
+            $mime = $image->getMimeType() ?: 'image/jpeg';
 
-        $response = Http::withToken($token)
-            ->timeout((int) config('services.food_scan.timeout', 90))
-            ->withHeaders(['Content-Type' => $mime])
-            ->withBody($bytes, $mime)
-            ->post("https://api-inference.huggingface.co/models/{$model}");
-
-        if ($response->status() === 503) {
-            // Model cold-start; one retry after brief wait hint in body.
-            sleep(2);
             $response = Http::withToken($token)
                 ->timeout((int) config('services.food_scan.timeout', 90))
                 ->withHeaders(['Content-Type' => $mime])
                 ->withBody($bytes, $mime)
                 ->post("https://api-inference.huggingface.co/models/{$model}");
-        }
 
-        if (! $response->successful()) {
-            throw new RuntimeException('Ghana classifier error: '.$response->body());
-        }
+            if ($response->status() === 503) {
+                sleep(2);
+                $response = Http::withToken($token)
+                    ->timeout((int) config('services.food_scan.timeout', 90))
+                    ->withHeaders(['Content-Type' => $mime])
+                    ->withBody($bytes, $mime)
+                    ->post("https://api-inference.huggingface.co/models/{$model}");
+            }
 
-        $json = $response->json();
-        if (! is_array($json)) {
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $json = $response->json();
+            if (! is_array($json)) {
+                return [];
+            }
+
+            $rows = [];
+            foreach ($json as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $label = (string) ($item['label'] ?? '');
+                $score = (float) ($item['score'] ?? 0);
+                if ($label === '' || $score <= 0) {
+                    continue;
+                }
+                $rows[] = ['name' => $label, 'confidence' => $score];
+            }
+
+            usort($rows, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
+
+            return array_slice($rows, 0, 5);
+        } catch (\Throwable) {
             return [];
         }
-
-        $rows = [];
-        foreach ($json as $item) {
-            if (! is_array($item)) {
-                continue;
-            }
-            $label = (string) ($item['label'] ?? '');
-            $score = (float) ($item['score'] ?? 0);
-            if ($label === '' || $score <= 0) {
-                continue;
-            }
-            $rows[] = ['name' => $label, 'confidence' => $score];
-        }
-
-        usort($rows, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
-
-        return array_slice($rows, 0, 5);
     }
 
     /**
@@ -232,75 +234,80 @@ class FoodScanService
     {
         $apiKey = trim((string) config('services.food_scan.gemini_api_key', ''));
         if ($apiKey === '') {
-            throw new RuntimeException('GEMINI_API_KEY is not configured for food scan fallback.');
+            return [];
         }
 
         $model = (string) config('services.food_scan.gemini_model', 'gemini-2.5-flash');
         $mime = $image->getMimeType() ?: 'image/jpeg';
-        $b64 = base64_encode((string) file_get_contents($image->getRealPath()));
 
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
+        try {
+            $b64 = base64_encode((string) file_get_contents($image->getRealPath()));
 
-        $response = Http::timeout((int) config('services.food_scan.timeout', 90))
-            ->withQueryParameters(['key' => $apiKey])
-            ->post($url, [
-                'contents' => [
-                    [
-                        'parts' => [
-                            [
-                                'text' => 'Identify Ghanaian and West African foods visible in this image. '
-                                    .'If there is no food, or only non-food objects (people, furniture, packaging without food, empty plate), '
-                                    .'return JSON only: {"foods":[]}. '
-                                    .'Otherwise return JSON only: {"foods":[{"name":"jollof","confidence":0.9}]} '
-                                    .'Use short English names (banku, fufu, waakye, kenkey, kelewele, kontomire, red red). '
-                                    .'confidence 0-1 reflects how sure you are it is food. Up to 5 items.',
-                            ],
-                            [
-                                'inline_data' => [
-                                    'mime_type' => $mime,
-                                    'data' => $b64,
+            $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
+
+            $response = Http::timeout((int) config('services.food_scan.timeout', 90))
+                ->withQueryParameters(['key' => $apiKey])
+                ->post($url, [
+                    'contents' => [
+                        [
+                            'parts' => [
+                                [
+                                    'text' => 'Identify Ghanaian and West African foods visible in this image. '
+                                        .'If there is no food, or only non-food objects (people, furniture, packaging without food, empty plate), '
+                                        .'return JSON only: {"foods":[]}. '
+                                        .'Otherwise return JSON only: {"foods":[{"name":"jollof","confidence":0.9}]} '
+                                        .'Use short English names (banku, fufu, waakye, kenkey, kelewele, kontomire, red red). '
+                                        .'confidence 0-1 reflects how sure you are it is food. Up to 5 items.',
+                                ],
+                                [
+                                    'inline_data' => [
+                                        'mime_type' => $mime,
+                                        'data' => $b64,
+                                    ],
                                 ],
                             ],
                         ],
                     ],
-                ],
-                'generationConfig' => [
-                    'temperature' => 0.2,
-                    'responseMimeType' => 'application/json',
-                ],
-            ]);
+                    'generationConfig' => [
+                        'temperature' => 0.2,
+                        'responseMimeType' => 'application/json',
+                    ],
+                ]);
 
-        if (! $response->successful()) {
-            throw new RuntimeException('Gemini food scan error: '.$response->body());
-        }
-
-        $text = data_get($response->json(), 'candidates.0.content.parts.0.text');
-        if (! is_string($text) || trim($text) === '') {
-            return [];
-        }
-
-        $parsed = json_decode($text, true);
-        if (! is_array($parsed)) {
-            return [];
-        }
-
-        $foods = $parsed['foods'] ?? $parsed['detections'] ?? $parsed['items'] ?? [];
-        if (! is_array($foods)) {
-            return [];
-        }
-
-        $rows = [];
-        foreach ($foods as $food) {
-            if (! is_array($food)) {
-                continue;
+            if (! $response->successful()) {
+                return [];
             }
-            $rows[] = [
-                'name' => (string) ($food['name'] ?? $food['class_name'] ?? ''),
-                'confidence' => (float) ($food['confidence'] ?? $food['score'] ?? 0),
-            ];
-        }
 
-        return $rows;
+            $text = data_get($response->json(), 'candidates.0.content.parts.0.text');
+            if (! is_string($text) || trim($text) === '') {
+                return [];
+            }
+
+            $parsed = json_decode($text, true);
+            if (! is_array($parsed)) {
+                return [];
+            }
+
+            $foods = $parsed['foods'] ?? $parsed['detections'] ?? $parsed['items'] ?? [];
+            if (! is_array($foods)) {
+                return [];
+            }
+
+            $rows = [];
+            foreach ($foods as $food) {
+                if (! is_array($food)) {
+                    continue;
+                }
+                $rows[] = [
+                    'name' => (string) ($food['name'] ?? $food['class_name'] ?? ''),
+                    'confidence' => (float) ($food['confidence'] ?? $food['score'] ?? 0),
+                ];
+            }
+
+            return $rows;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

@@ -148,6 +148,11 @@ String _cacheKeyFor(LeaderboardPeriod period) {
 String _periodQuery(LeaderboardPeriod period) =>
     period == LeaderboardPeriod.month ? 'month' : 'day';
 
+Future<void> clearLeaderboardOfflineCache() async {
+  final db = await SqliteOfflineDb.getInstance();
+  await db.clearLeaderboardCache();
+}
+
 Future<List<LeaderboardUser>> _usersFromApiMaps({
   required List<Map<String, dynamic>> list,
   required Map<String, dynamic>? me,
@@ -200,11 +205,28 @@ Future<List<LeaderboardUser>> _usersFromApiMaps({
       meId != null &&
       meRank != null &&
       meSteps != null &&
+      meSteps > 0 &&
       !alreadyInTop) {
     users.add(
       LeaderboardUser(
         id: meId,
         rank: meRank,
+        name: 'You',
+        location: meLocation,
+        steps: meSteps,
+        imageUrl: meAvatarUrl,
+        isCurrentUser: true,
+      ),
+    );
+  } else if (users.isEmpty &&
+      optedIn &&
+      meId != null &&
+      meSteps != null &&
+      meSteps > 0) {
+    users.add(
+      LeaderboardUser(
+        id: meId,
+        rank: meRank ?? 1,
         name: 'You',
         location: meLocation,
         steps: meSteps,

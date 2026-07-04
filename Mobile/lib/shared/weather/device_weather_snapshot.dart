@@ -68,10 +68,21 @@ class DeviceWeatherSnapshot {
       };
 }
 
-/// Default Accra coordinates when GPS is unavailable.
+/// Default coordinates only when GPS is unavailable (Open-Meteo still needs a point).
 const deviceWeatherFallbackLat = 5.6037;
 const deviceWeatherFallbackLon = -0.1870;
-const deviceWeatherFallbackLabel = 'Accra, GH';
+
+/// Shown when we could not read the phone's GPS (not the user's city).
+const deviceWeatherLocationUnavailableLabel =
+    'Enable location for local weather';
+
+const deviceWeatherFallbackLabel = deviceWeatherLocationUnavailableLabel;
+
+bool isFallbackWeatherCoordinates(double lat, double lon) {
+  const epsilon = 0.02;
+  return (lat - deviceWeatherFallbackLat).abs() < epsilon &&
+      (lon - deviceWeatherFallbackLon).abs() < epsilon;
+}
 
 int? _parseWeatherCode(dynamic raw) {
   if (raw is int) return raw;

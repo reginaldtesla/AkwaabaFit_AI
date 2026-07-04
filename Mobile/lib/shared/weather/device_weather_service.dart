@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/weather/device_weather_snapshot.dart';
+import 'package:mobile/shared/weather/location_label_resolver.dart';
 
 const _cacheTtl = Duration(minutes: 20);
 
@@ -44,19 +45,38 @@ class DeviceWeatherService {
     if (cached != null) {
       final snap = DeviceWeatherSnapshot.fromJson(cached);
       final age = DateTime.now().difference(snap.fetchedAt);
-      if (allowStaleCache && age < _cacheTtl) {
-        return snap;
+      final cacheCoordsOk = !isFallbackWeatherCoordinates(
+        snap.latitude,
+        snap.longitude,
+      );
+      if (allowStaleCache && age < _cacheTtl && cacheCoordsOk) {
+        final staleLabel = snap.location.trim().toLowerCase();
+        final needsRelabel = staleLabel == 'your area' ||
+            staleLabel == 'accra, gh' ||
+            staleLabel == deviceWeatherLocationUnavailableLabel.toLowerCase();
+        if (!needsRelabel) {
+          return snap;
+        }
       }
     }
 
     if (!await isDeviceOnline()) {
-      return cached != null ? DeviceWeatherSnapshot.fromJson(cached) : null;
+      if (cached != null) {
+        return DeviceWeatherSnapshot.fromJson(cached);
+      }
+      return null;
     }
 
     try {
       final coords = await _resolveCoordinates();
-      final snap = await _fetchOpenMeteo(coords.lat, coords.lon);
-      if (snap != null) {
+      final snap = await _fetchOpenMeteo(
+        coords.lat,
+        coords.lon,
+        locationLabel: coords.isFallback
+            ? deviceWeatherLocationUnavailableLabel
+            : null,
+      );
+      if (snap != null && !coords.isFallback) {
         await db.putWeatherCache(snap.toJson());
       }
       return snap;
@@ -68,51 +88,79 @@ class DeviceWeatherService {
     }
   }
 
-  /// Coordinates for API query params — uses cache or GPS without full weather fetch.
+  /// Coordinates for API query params — prefers live GPS over stale Accra fallback.
   Future<({double lat, double lon})> resolveCoordinates() async {
+    final fresh = await _resolveCoordinates();
+    return (lat: fresh.lat, lon: fresh.lon);
+  }
+
+  Future<({double lat, double lon, bool isFallback})> _resolveCoordinates() async {
     final db = await _dbFuture;
     final cached = await db.getWeatherCache();
     if (cached != null) {
       final snap = DeviceWeatherSnapshot.fromJson(cached);
-      if (snap.latitude != 0 || snap.longitude != 0) {
-        return (lat: snap.latitude, lon: snap.longitude);
+      if (!isFallbackWeatherCoordinates(snap.latitude, snap.longitude)) {
+        return (lat: snap.latitude, lon: snap.longitude, isFallback: false);
       }
     }
 
-    final coords = await _resolveCoordinates();
-    return (lat: coords.lat, lon: coords.lon);
-  }
-
-  Future<({double lat, double lon})> _resolveCoordinates() async {
     try {
+      final servicesOn = await Geolocator.isLocationServiceEnabled();
+      if (!servicesOn) {
+        return _fallbackCoords();
+      }
+
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        return (
-          lat: deviceWeatherFallbackLat,
-          lon: deviceWeatherFallbackLon,
-        );
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          return (
+            lat: last.latitude,
+            lon: last.longitude,
+            isFallback: false,
+          );
+        }
+        return _fallbackCoords();
       }
 
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 12),
+          timeLimit: Duration(seconds: 15),
         ),
       );
-      return (lat: pos.latitude, lon: pos.longitude);
+      return (lat: pos.latitude, lon: pos.longitude, isFallback: false);
     } catch (_) {
-      return (
-        lat: deviceWeatherFallbackLat,
-        lon: deviceWeatherFallbackLon,
-      );
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          return (
+            lat: last.latitude,
+            lon: last.longitude,
+            isFallback: false,
+          );
+        }
+      } catch (_) {}
+      return _fallbackCoords();
     }
   }
 
-  Future<DeviceWeatherSnapshot?> _fetchOpenMeteo(double lat, double lon) async {
+  ({double lat, double lon, bool isFallback}) _fallbackCoords() => (
+        lat: deviceWeatherFallbackLat,
+        lon: deviceWeatherFallbackLon,
+        isFallback: true,
+      );
+
+  Future<DeviceWeatherSnapshot?> _fetchOpenMeteo(
+    double lat,
+    double lon, {
+    String? locationLabel,
+  }) async {
     final forecastResp = await _dio.get<Map<String, dynamic>>(
       'https://api.open-meteo.com/v1/forecast',
       queryParameters: {
@@ -140,7 +188,8 @@ class DeviceWeatherService {
     final forecast = forecastResp.data;
     if (forecast == null) return null;
 
-    final label = await _reverseGeocode(lat, lon);
+    final label = locationLabel ??
+        await LocationLabelResolver.resolve(lat, lon, dio: _dio);
     return deviceWeatherFromOpenMeteoJson(
       lat: lat,
       lon: lon,
@@ -148,33 +197,5 @@ class DeviceWeatherService {
       airQuality: airJson,
       location: label,
     );
-  }
-
-  Future<String> _reverseGeocode(double lat, double lon) async {
-    try {
-      final resp = await _dio.get<Map<String, dynamic>>(
-        'https://geocoding-api.open-meteo.com/v1/reverse',
-        queryParameters: {
-          'latitude': lat,
-          'longitude': lon,
-          'language': 'en',
-          'count': 1,
-        },
-      );
-      final results = resp.data?['results'];
-      if (results is List && results.isNotEmpty) {
-        final row = results.first;
-        if (row is Map) {
-          final name = row['name']?.toString().trim() ?? '';
-          final country = row['country_code']?.toString().trim() ?? '';
-          final label = [
-            if (name.isNotEmpty) name,
-            if (country.isNotEmpty) country,
-          ].join(', ');
-          if (label.isNotEmpty) return label;
-        }
-      }
-    } catch (_) {}
-    return deviceWeatherFallbackLabel;
   }
 }

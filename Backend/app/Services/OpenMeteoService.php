@@ -134,27 +134,98 @@ class OpenMeteoService
     private function reverseGeocodeLabel(float $lat, float $lon, string $fallback): string
     {
         try {
-            $resp = Http::timeout(6)->get('https://geocoding-api.open-meteo.com/v1/reverse', [
-                'latitude' => $lat,
-                'longitude' => $lon,
-                'language' => 'en',
-                'count' => 1,
-            ]);
-            if (! $resp->ok()) {
-                return $fallback;
-            }
-            $row = data_get($resp->json(), 'results.0');
-            if (! is_array($row)) {
-                return $fallback;
-            }
-            $name = trim((string) ($row['name'] ?? ''));
-            $country = trim((string) ($row['country_code'] ?? ''));
-            $label = trim($name.(strlen($country) ? ", {$country}" : ''));
+            $resp = Http::timeout(8)
+                ->withHeaders([
+                    'User-Agent' => 'AkwaabaFit/1.0 (weather; contact: support@akwaabafit.com)',
+                ])
+                ->get('https://nominatim.openstreetmap.org/reverse', [
+                    'lat' => $lat,
+                    'lon' => $lon,
+                    'format' => 'json',
+                    'addressdetails' => 1,
+                    'accept-language' => 'en',
+                    'zoom' => 10,
+                ]);
 
-            return $label !== '' ? $label : $fallback;
+            if (! $resp->ok()) {
+                return $this->coordinateLabel($lat, $lon) ?? $fallback;
+            }
+
+            $json = $resp->json();
+            if (! is_array($json)) {
+                return $this->coordinateLabel($lat, $lon) ?? $fallback;
+            }
+
+            $address = $json['address'] ?? null;
+            if (is_array($address)) {
+                $city = $this->firstNonEmpty([
+                    $address['city'] ?? null,
+                    $address['town'] ?? null,
+                    $address['village'] ?? null,
+                    $address['municipality'] ?? null,
+                    $address['suburb'] ?? null,
+                    $address['county'] ?? null,
+                ]);
+                $region = $this->firstNonEmpty([
+                    $address['state'] ?? null,
+                    $address['region'] ?? null,
+                ]);
+                $country = trim((string) ($address['country'] ?? ''));
+
+                $parts = array_values(array_filter([
+                    $city,
+                    ($region !== null && $region !== $city) ? $region : null,
+                    $country !== '' ? $country : null,
+                ], static fn ($v) => $v !== null && $v !== ''));
+
+                if ($parts !== []) {
+                    return implode(', ', array_slice($parts, 0, 3));
+                }
+            }
+
+            $display = trim((string) ($json['display_name'] ?? ''));
+            if ($display !== '') {
+                $chunks = array_map('trim', explode(',', $display));
+                if (count($chunks) >= 2) {
+                    return $chunks[0].', '.$chunks[count($chunks) - 1];
+                }
+
+                return $display;
+            }
         } catch (\Throwable) {
-            return $fallback;
+            // fall through
         }
+
+        return $this->coordinateLabel($lat, $lon) ?? $fallback;
+    }
+
+    /**
+     * @param  list<mixed>  $values
+     */
+    private function firstNonEmpty(array $values): ?string
+    {
+        foreach ($values as $value) {
+            $trimmed = trim((string) ($value ?? ''));
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        return null;
+    }
+
+    private function coordinateLabel(float $lat, float $lon): string
+    {
+        $latH = $lat >= 0 ? 'N' : 'S';
+        $lonH = $lon >= 0 ? 'E' : 'W';
+
+        return sprintf(
+            '%.2f°%s, %.2f°%s',
+            abs($lat),
+            $latH,
+            abs($lon),
+            $lonH
+        );
     }
 
     private function wmoToWeatherMain(int $code): string

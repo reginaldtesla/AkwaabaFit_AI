@@ -710,6 +710,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                       await repo.saveAndSync({
                         'is_public_on_leaderboard': value,
                       });
+                      await clearLeaderboardOfflineCache();
                       ref.invalidate(publicLeaderboardProvider);
                       ref.invalidate(leaderboardProvider);
                       if (!context.mounted) return;

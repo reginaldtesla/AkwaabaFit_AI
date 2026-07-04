@@ -102,7 +102,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   // Form State
   String? _selectedGender;
   String? _selectedActivityLevel;
-  bool _isPublicOnLeaderboard = true;
+  bool _isPublicOnLeaderboard = false;
   int _onboardingStep = 0;
 
   String? _selectedGoal;

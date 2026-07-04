@@ -206,4 +206,68 @@ class StepLogTest extends TestCase
             ->assertJsonPath('period', 'day')
             ->assertJsonPath('data.0.total_steps', 2000);
     }
+
+    public function test_leaderboard_excludes_users_who_opted_out_of_public_board(): void
+    {
+        Cache::flush();
+
+        $viewer = User::factory()->create([
+            'name' => 'Viewer',
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        $publicUser = User::factory()->create([
+            'name' => 'Public Walker',
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        $privateUser = User::factory()->create([
+            'name' => 'Private Walker',
+            'is_public_on_leaderboard' => false,
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $publicUser->id,
+            'step_count' => 9000,
+            'log_date' => now()->toDateString(),
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $privateUser->id,
+            'step_count' => 15000,
+            'log_date' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($viewer)->getJson('/api/leaderboard/daily');
+
+        $response->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Public Walker'])
+            ->assertJsonMissing(['name' => 'Private Walker']);
+
+        $names = collect($response->json('data'))->pluck('name')->all();
+        $this->assertSame(['Public Walker'], $names);
+    }
+
+    public function test_leaderboard_me_shows_opted_out_without_rank(): void
+    {
+        Cache::flush();
+
+        $user = User::factory()->create([
+            'name' => 'Private Me',
+            'is_public_on_leaderboard' => false,
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $user->id,
+            'step_count' => 6000,
+            'log_date' => now()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($user)->getJson('/api/leaderboard/daily/me');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('optedIn', false)
+            ->assertJsonPath('rank', null)
+            ->assertJsonPath('totalUsers', null);
+    }
 }

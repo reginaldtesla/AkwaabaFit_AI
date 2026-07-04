@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DailyStepLog;
 use App\Models\HourlyStepLog;
 use App\Services\OpenMeteoService;
+use App\Support\LeaderboardCache;
 use App\Support\WeatherCoordinates;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -139,7 +140,30 @@ class ActivityController extends Controller
             ]);
         }
 
+        $this->upsertDailyStepLog($user->id, $logDate, $next);
+
         return response()->json(['status' => 'success'], 201);
+    }
+
+    private function upsertDailyStepLog(int $userId, string $logDate, int $stepCount): void
+    {
+        $existing = DailyStepLog::query()
+            ->where('user_id', $userId)
+            ->whereDate('log_date', $logDate)
+            ->first();
+
+        if ($existing) {
+            $existing->step_count = max((int) $existing->step_count, $stepCount);
+            $existing->save();
+        } else {
+            DailyStepLog::create([
+                'user_id' => $userId,
+                'log_date' => $logDate,
+                'step_count' => $stepCount,
+            ]);
+        }
+
+        LeaderboardCache::forgetCurrent();
     }
 
     /**

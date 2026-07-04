@@ -145,6 +145,9 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       unawaited(BackgroundStepTrackingBootstrap.ensureRunningOnResume());
       ref.read(profileRepositoryProvider).syncPendingIfAny();
       ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+      ref.invalidate(deviceWeatherProvider);
+      ref.invalidate(dashboardDataProvider);
+      ref.invalidate(activityDataProvider);
       ref.invalidate(leaderboardProvider);
       LeaderboardRefreshBus.notify();
     }

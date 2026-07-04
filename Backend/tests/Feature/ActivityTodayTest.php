@@ -111,4 +111,31 @@ class ActivityTodayTest extends TestCase
         // Bucket for hours 9–11: max inside (1500) − max before hour 9 (0) = 1500 (not 1000+1500).
         $response->assertJsonPath('hourlyBucketSteps.3', 1500);
     }
+
+    public function test_hourly_log_updates_daily_steps_for_leaderboard(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+
+        $user = User::factory()->create([
+            'name' => 'Solo Walker',
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        $response = $this->actingAs($user)->postJson('/api/activity/hourly/log', [
+            'step_count' => 4200,
+        ]);
+
+        $response->assertStatus(201);
+
+        $this->assertDatabaseHas('daily_step_logs', [
+            'user_id' => $user->id,
+            'step_count' => 4200,
+        ]);
+
+        $board = $this->actingAs($user)->getJson('/api/leaderboard/daily');
+
+        $board->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Solo Walker'])
+            ->assertJsonPath('data.0.total_steps', 4200);
+    }
 }

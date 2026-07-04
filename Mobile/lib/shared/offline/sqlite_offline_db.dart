@@ -867,6 +867,10 @@ class SqliteOfflineDb {
     });
   }
 
+  Future<void> clearLeaderboardCache() async {
+    await _db.delete('leaderboard_cache');
+  }
+
   Future<void> putLeaderboardCache(String key, Map<String, dynamic> json) async {
     await _db.insert(
       'leaderboard_cache',

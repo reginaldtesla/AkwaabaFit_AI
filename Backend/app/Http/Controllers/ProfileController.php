@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateProfileRequest;
 use App\Support\HealthProfileOptions;
+use App\Support\LeaderboardCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -48,6 +49,10 @@ class ProfileController extends Controller
 
         if (! $user->accountability_code && ($data['profile_completed'] ?? false)) {
             $data['accountability_code'] = strtoupper(substr(bin2hex(random_bytes(4)), 0, 6));
+        }
+
+        if (array_key_exists('is_public_on_leaderboard', $data)) {
+            LeaderboardCache::forgetCurrent();
         }
 
         $user->update($data);

@@ -63,8 +63,8 @@ class StepsOfflineRecorder {
 
     if (!online) {
       await db.replacePendingActivityHourlyOutbox({'step_count': steps});
-      // Also queue today's step sync (cheap, deduped by updateOrCreate).
       await db.enqueueOutbox(type: 'steps_sync', payload: {
+        'log_date': today,
         'step_count': steps,
       });
       return;
@@ -77,13 +77,12 @@ class StepsOfflineRecorder {
     }
 
     try {
-      // Sync today's steps (and any queued yesterday snapshot) in the background.
-      // We keep it in the outbox so it can retry safely.
       await db.enqueueOutbox(type: 'steps_sync', payload: {
+        'log_date': today,
         'step_count': steps,
       });
 
-      await Dio(
+      final dio = Dio(
         BaseOptions(
           baseUrl: AppConfig.apiBaseUrl,
           connectTimeout: const Duration(seconds: 8),
@@ -93,7 +92,12 @@ class StepsOfflineRecorder {
             'Authorization': 'Bearer $token',
           },
         ),
-      ).post('/activity/hourly/log', data: {'step_count': steps});
+      );
+      await dio.post('/activity/hourly/log', data: {'step_count': steps});
+      await dio.post('/steps/sync', data: {
+        'step_count': steps,
+        'log_date': today,
+      });
       _lastDirectPostAt = now;
       await db.deletePendingActivityHourlyOutbox();
       LeaderboardRefreshBus.notify();

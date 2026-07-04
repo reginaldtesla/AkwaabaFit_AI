@@ -59,16 +59,7 @@ class FoodScanApiService {
       'image': await MultipartFile.fromFile(imagePath, filename: 'scan.jpg'),
     });
 
-    final resp = await _dio.post(
-      '/nutrition/scan',
-      data: form,
-      options: Options(
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ),
-    );
+    final resp = await _postScan(form);
 
     final raw = resp.data;
     if (raw is! Map) {
@@ -80,6 +71,7 @@ class FoodScanApiService {
       throw StateError(map['message']?.toString() ?? 'Food scan failed.');
     }
 
+    final notFood = map['not_food'] == true;
     final detections = <FoodScanDetection>[];
     final list = map['detections'];
     if (list is List) {
@@ -98,8 +90,53 @@ class FoodScanApiService {
       provider: map['provider']?.toString() ?? 'hybrid',
       strategy: map['strategy']?.toString() ?? 'unknown',
       detections: detections,
-      message: map['message']?.toString(),
+      message: notFood
+          ? (map['message']?.toString() ??
+              "This doesn't look like food. Point your camera at a meal on a plate and scan again.")
+          : map['message']?.toString(),
     );
+  }
+
+  Future<Response<dynamic>> _postScan(FormData form) async {
+    final token = await _storage.read(key: 'sanctum_token');
+    try {
+      return await _dio.post(
+        '/nutrition/scan',
+        data: form,
+        options: Options(
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+    } on DioException catch (e) {
+      final message = _messageFromDio(e);
+      throw StateError(message);
+    }
+  }
+
+  String _messageFromDio(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      final msg = data['message']?.toString();
+      if (msg != null && msg.isNotEmpty) {
+        return msg;
+      }
+    }
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      return 'Scan timed out. Check your connection and try again.';
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return 'Could not reach the scan service. Check your connection.';
+    }
+    final code = e.response?.statusCode;
+    if (code == 503 || code == 502) {
+      return 'Scan service is busy. Wait a moment and try again.';
+    }
+    return "This doesn't look like food. Point your camera at a meal on a plate and scan again.";
   }
 
   Future<({

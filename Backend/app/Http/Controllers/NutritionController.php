@@ -184,10 +184,16 @@ class NutritionController extends Controller
         try {
             $result = $scanner->scan($request->file('image'));
         } catch (Throwable $e) {
+            report($e);
+
             return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ], 503);
+                'status' => 'success',
+                'not_food' => true,
+                'provider' => 'hybrid',
+                'strategy' => 'error',
+                'detections' => [],
+                'message' => "This doesn't look like food. Point your camera at a meal on a plate and scan again.",
+            ]);
         }
 
         if ($result['detections'] === []) {

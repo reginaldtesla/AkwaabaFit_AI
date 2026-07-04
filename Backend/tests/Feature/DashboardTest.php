@@ -171,9 +171,11 @@ class DashboardTest extends TestCase
                     'pm10' => 140.7,
                 ],
             ], 200),
-            'geocoding-api.open-meteo.com/*' => Http::response([
-                'results' => [
-                    ['name' => 'Accra', 'country_code' => 'GH'],
+            'nominatim.openstreetmap.org/*' => Http::response([
+                'display_name' => 'Accra, Greater Accra Region, Ghana',
+                'address' => [
+                    'city' => 'Accra',
+                    'country' => 'Ghana',
                 ],
             ], 200),
         ]);

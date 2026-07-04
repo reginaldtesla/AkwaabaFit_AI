@@ -90,7 +90,7 @@ class FoodScanTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('strategy', 'gemini_flash_fallback')
             ->assertJsonPath('detections.0.class_name', 'banku')
-            ->assertJsonPath('detections.0.source', 'gemini_flash');
+            ->assertJsonPath('detections.0.source', 'hybrid_agreement');
     }
 
     public function test_hybrid_scan_rejects_weak_detections_as_not_food(): void
@@ -132,6 +132,36 @@ class FoodScanTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('status', 'success')
             ->assertJsonPath('strategy', 'none')
+            ->assertJsonPath('not_food', true)
             ->assertJsonPath('detections', []);
+    }
+
+    public function test_hybrid_scan_returns_not_food_when_ai_providers_fail(): void
+    {
+        config([
+            'services.food_scan.huggingface_token' => 'hf-test',
+            'services.food_scan.gemini_api_key' => 'gemini-test',
+        ]);
+
+        Http::fake([
+            'api-inference.huggingface.co/*' => Http::response('model loading', 503),
+            'generativelanguage.googleapis.com/*' => Http::response('quota exceeded', 429),
+        ]);
+
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+        $jpeg = base64_decode(
+            '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=',
+            true
+        );
+        $file = UploadedFile::fake()->createWithContent('desk.jpg', $jpeg, 'image/jpeg');
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->post('/api/nutrition/scan', ['image' => $file])
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('not_food', true)
+            ->assertJsonPath('detections', [])
+            ->assertJsonPath('message', "This doesn't look like food. Point your camera at a meal on a plate and scan again.");
     }
 }
