@@ -108,7 +108,18 @@ class SqliteOfflineSyncService {
             break;
           case 'activity_hourly_log':
             await dio.post(
-              '/activity/hourly/log',
+              'activity/hourly/log',
+              data: payload,
+              options: Options(headers: {
+                ...AppConfig.apiHeaders,
+                'Authorization': 'Bearer $token',
+              }),
+            );
+            await db.markOutboxSuccess(id);
+            break;
+          case 'hydration_log':
+            await dio.post(
+              'hydration/log',
               data: payload,
               options: Options(headers: {
                 ...AppConfig.apiHeaders,

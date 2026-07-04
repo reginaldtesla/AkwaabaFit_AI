@@ -11,6 +11,7 @@ import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.
 import 'package:mobile/shared/device/physical_device_guard.dart';
 import 'package:mobile/shared/device/unsupported_device_screen.dart';
 import 'package:mobile/shared/fitness/background_step_tracking_bootstrap.dart';
+import 'package:mobile/shared/hydration/hydration_service.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 import 'package:mobile/shared/app_update/app_update_banner.dart';
 import 'package:mobile/shared/app_update/app_update_provider.dart';
@@ -97,6 +98,7 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       try {
         await ref.read(profileRepositoryProvider).syncPendingIfAny();
         await ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+        await ref.read(hydrationServiceProvider).syncPendingIfAny();
       } catch (_) {}
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(activityDataProvider);
@@ -126,6 +128,7 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
 
       ref.read(profileRepositoryProvider).syncPendingIfAny();
       ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+      ref.read(hydrationServiceProvider).syncPendingIfAny();
       ref.invalidate(appUpdateInfoProvider);
       ref.invalidate(leaderboardProvider);
       LeaderboardRefreshBus.notify();
@@ -145,6 +148,7 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       unawaited(BackgroundStepTrackingBootstrap.ensureRunningOnResume());
       ref.read(profileRepositoryProvider).syncPendingIfAny();
       ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+      ref.read(hydrationServiceProvider).syncPendingIfAny();
       ref.invalidate(deviceWeatherProvider);
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(activityDataProvider);

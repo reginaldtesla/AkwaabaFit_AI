@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/shared/hydration/hydration_service.dart';
+import 'package:mobile/shared/hydration/water_goal_achievement_notifier.dart';
 
 class WaterTrackerCard extends ConsumerStatefulWidget {
   const WaterTrackerCard({
@@ -21,6 +24,7 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
   late int _totalMl;
   late int _goalMl;
   bool _busy = false;
+  bool _fromCache = false;
 
   @override
   void initState() {
@@ -31,22 +35,62 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
   }
 
   Future<void> _refresh() async {
-    final today = await ref.read(hydrationServiceProvider).fetchToday();
+    final today = await ref.read(hydrationServiceProvider).fetchToday(
+          seedTotalMl: widget.initialTotalMl,
+          seedGoalMl: widget.initialGoalMl,
+        );
     if (today != null && mounted) {
       setState(() {
         _totalMl = today.totalMl;
         _goalMl = today.goalMl;
+        _fromCache = today.fromCache;
       });
+      unawaited(
+        WaterGoalAchievementNotifier.evaluate(
+          totalMl: today.totalMl,
+          goalMl: today.goalMl,
+        ),
+      );
     }
   }
 
   Future<void> _addGlass() async {
     setState(() => _busy = true);
-    final ok = await ref.read(hydrationServiceProvider).logGlass();
-    if (ok) {
-      setState(() => _totalMl += 250);
+    final result = await ref.read(hydrationServiceProvider).logGlass(
+          goalMl: _goalMl,
+        );
+    if (!mounted) return;
+    if (result.success) {
+      setState(() {
+        _totalMl = result.totalMl;
+        _fromCache = !result.syncedOnline;
+      });
+      unawaited(
+        WaterGoalAchievementNotifier.evaluate(
+          totalMl: result.totalMl,
+          goalMl: _goalMl,
+        ),
+      );
+      final hitGoal = _goalMl > 0 && result.totalMl >= _goalMl;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            hitGoal
+                ? 'Daily water goal reached — nice work!'
+                : result.syncedOnline
+                    ? 'Glass added (+250 ml)'
+                    : 'Glass saved offline (+250 ml) — will sync when online',
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save water. Please sign in and try again.'),
+        ),
+      );
     }
-    if (mounted) setState(() => _busy = false);
+    setState(() => _busy = false);
   }
 
   @override
@@ -85,6 +129,16 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
               ),
             ],
           ),
+          if (_fromCache) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Saved on this device — syncs when you\'re back online',
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                color: Colors.blueGrey.shade500,
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),

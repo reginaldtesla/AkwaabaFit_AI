@@ -21,7 +21,7 @@ class SqliteOfflineDb {
     final path = p.join(dbPath, 'akwaaba_offline.db');
     final db = await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE profile_cache (
@@ -107,6 +107,15 @@ class SqliteOfflineDb {
           CREATE TABLE leaderboard_cache (
             key TEXT PRIMARY KEY,
             json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        ''');
+
+        await db.execute('''
+          CREATE TABLE hydration_local (
+            log_date TEXT PRIMARY KEY,
+            total_ml INTEGER NOT NULL,
+            goal_ml INTEGER NOT NULL,
             updated_at TEXT NOT NULL
           );
         ''');
@@ -201,6 +210,15 @@ class SqliteOfflineDb {
             updated_at TEXT NOT NULL
           );
         ''');
+
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS hydration_local (
+            log_date TEXT PRIMARY KEY,
+            total_ml INTEGER NOT NULL,
+            goal_ml INTEGER NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -279,6 +297,16 @@ class SqliteOfflineDb {
             CREATE TABLE IF NOT EXISTS leaderboard_cache (
               key TEXT PRIMARY KEY,
               json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+          ''');
+        }
+        if (oldVersion < 8) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS hydration_local (
+              log_date TEXT PRIMARY KEY,
+              total_ml INTEGER NOT NULL,
+              goal_ml INTEGER NOT NULL,
               updated_at TEXT NOT NULL
             );
           ''');
@@ -824,6 +852,59 @@ class SqliteOfflineDb {
     return int.tryParse(v.toString());
   }
 
+  Future<({int totalMl, int goalMl})?> getHydrationLocalForDate(
+    String logDate,
+  ) async {
+    final rows = await _db.query(
+      'hydration_local',
+      columns: ['total_ml', 'goal_ml'],
+      where: 'log_date = ?',
+      whereArgs: [logDate],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final total = row['total_ml'];
+    final goal = row['goal_ml'];
+    return (
+      totalMl: total is int ? total : int.tryParse('$total') ?? 0,
+      goalMl: goal is int ? goal : int.tryParse('$goal') ?? 2000,
+    );
+  }
+
+  Future<void> upsertHydrationLocal({
+    required String logDate,
+    required int totalMl,
+    required int goalMl,
+  }) async {
+    await _db.insert(
+      'hydration_local',
+      {
+        'log_date': logDate,
+        'total_ml': totalMl,
+        'goal_ml': goalMl,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<int> addHydrationLocal({
+    required String logDate,
+    required int amountMl,
+    int goalMl = 2000,
+  }) async {
+    final existing = await getHydrationLocalForDate(logDate);
+    final nextTotal = (existing?.totalMl ?? 0) + amountMl;
+    final nextGoal = existing?.goalMl ?? goalMl;
+    await upsertHydrationLocal(
+      logDate: logDate,
+      totalMl: nextTotal,
+      goalMl: nextGoal,
+    );
+    return nextTotal;
+  }
+
   /// Keeps a single pending hourly step job so the outbox does not grow with every sensor tick.
   Future<void> replacePendingActivityHourlyOutbox(
     Map<String, dynamic> payload,
@@ -864,6 +945,7 @@ class SqliteOfflineDb {
       await txn.rawDelete('DELETE FROM outbox');
       await txn.rawDelete('DELETE FROM nutrition_food_cache');
       await txn.rawDelete('DELETE FROM leaderboard_cache');
+      await txn.rawDelete('DELETE FROM hydration_local');
     });
   }
 

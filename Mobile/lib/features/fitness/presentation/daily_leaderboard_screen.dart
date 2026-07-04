@@ -127,7 +127,7 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
   String get _periodSubtitle {
     final period = ref.watch(leaderboardPeriodProvider);
     if (period == LeaderboardPeriod.day) {
-      return 'Resets at midnight';
+      return '';
     }
     return '$_monthLabel Monthly steps Public members only';
   }
