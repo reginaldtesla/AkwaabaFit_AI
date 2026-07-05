@@ -22,7 +22,6 @@ class LocalNotificationService {
   static const int _dailyGoalNotifId = 3100;
   static const int _mealReminderBase = 3200;
   static const int _stepsEnableConfirmId = 999;
-  static const int _consultBase = 9000;
 
   static const List<({int hour, int minute})> _stepsTimes = [
     (hour: 10, minute: 30),
@@ -165,104 +164,6 @@ class LocalNotificationService {
         minute: s.minute,
       );
     }
-  }
-
-  /// Confirm booking immediately and schedule reminders for the appointment time.
-  ///
-  /// - Posts an instant confirmation notification
-  /// - Schedules reminders 2 hours before, 30 minutes before, and at start time
-  Future<void> scheduleConsultationReminders({
-    required DateTime scheduledAt,
-    required String professionalName,
-  }) async {
-    await ensureInitialized();
-    final permissionGranted = await _requestNotificationPermission();
-    if (!permissionGranted) return;
-
-    final now = tz.TZDateTime.now(tz.local);
-    final when = tz.TZDateTime.from(scheduledAt, tz.local);
-    if (!when.isAfter(now)) return;
-
-    final pretty =
-        '${when.year.toString().padLeft(4, '0')}-${when.month.toString().padLeft(2, '0')}-${when.day.toString().padLeft(2, '0')} '
-        '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
-
-    const bookTitle = 'Nutrition session scheduled';
-    final bookBody = 'With $professionalName • $pretty';
-    await _recordInbox(
-      title: bookTitle,
-      body: bookBody,
-      category: 'booking',
-    );
-    await _plugin.show(
-      id: _consultBase,
-      title: bookTitle,
-      body: bookBody,
-      notificationDetails: NotificationDetails(
-        android: _androidReminderDetails(bookBody),
-      ),
-    );
-
-    int idFor(int offset) => _consultBase + offset;
-
-    // Cancel any prior reminders for this session signature (best-effort).
-    for (final id in [idFor(1), idFor(2), idFor(3)]) {
-      await _plugin.cancel(id: id);
-    }
-
-    Future<void> scheduleAt(int id, tz.TZDateTime at, String title, String body) async {
-      if (!at.isAfter(now)) return;
-      await _plugin.zonedSchedule(
-        id: id,
-        title: title,
-        body: body,
-        scheduledDate: at,
-        notificationDetails: NotificationDetails(
-          android: _androidReminderDetails(body),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      );
-    }
-
-    await scheduleAt(
-      idFor(1),
-      when.subtract(const Duration(hours: 2)),
-      'Upcoming nutrition session',
-      'In 2 hours • $professionalName • $pretty',
-    );
-    await scheduleAt(
-      idFor(2),
-      when.subtract(const Duration(minutes: 30)),
-      'Upcoming nutrition session',
-      'In 30 minutes • $professionalName • $pretty',
-    );
-    await scheduleAt(
-      idFor(3),
-      when,
-      'Nutrition session starting',
-      'Now • $professionalName • Open Advice to chat.',
-    );
-  }
-
-  /// Immediate OS notification (e.g. session just went live while app is open).
-  Future<void> showInstant({
-    required String title,
-    required String body,
-    String category = 'booking',
-  }) async {
-    await ensureInitialized();
-    final permissionGranted = await _requestNotificationPermission();
-    if (!permissionGranted) return;
-
-    await _recordInbox(title: title, body: body, category: category);
-    await _plugin.show(
-      id: _consultBase + 99,
-      title: title,
-      body: body,
-      notificationDetails: NotificationDetails(
-        android: _androidReminderDetails(body),
-      ),
-    );
   }
 
   Future<void> _scheduleDailyAt({

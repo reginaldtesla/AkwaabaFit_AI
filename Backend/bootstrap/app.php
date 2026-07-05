@@ -1,7 +1,5 @@
 <?php
 
-use App\Http\Middleware\EnsureNutritionAdvisor;
-use App\Http\Middleware\EnsureStaffAdminOrReviewKey;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -16,10 +14,6 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
-        $middleware->alias([
-            'staff.or_review' => EnsureStaffAdminOrReviewKey::class,
-            'advisor' => EnsureNutritionAdvisor::class,
-        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

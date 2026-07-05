@@ -47,23 +47,6 @@ return [
     ],
 
     /*
-    | Dietetics review portal (developer/admin approval).
-    | Provide a shared secret key to access /admin/dietetics pages.
-    */
-    'dietetics_review' => [
-        'key' => env('DIETETICS_REVIEW_KEY'),
-        'allow_shared_key' => filter_var(env('DIETETICS_ALLOW_SHARED_KEY', true), FILTER_VALIDATE_BOOL),
-    ],
-
-    /*
-    | Firebase Cloud Messaging (push notifications)
-    */
-    'fcm' => [
-        'project_id' => env('FCM_PROJECT_ID'),
-        'service_account_json' => env('FCM_SERVICE_ACCOUNT_JSON'),
-    ],
-
-    /*
     | Hybrid food scan: Ghana ConvNeXt (HF) + Gemini Flash fallback.
     */
     'food_scan' => [

@@ -17,23 +17,13 @@ AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and
 5. **Review eating over time (History)** — Browse meals by day with safety labels and protein / carbs / fat where available.
 6. **Stay safe outdoors (Safety)** — Weather and air-quality context with practical tips for walking and outdoor activity.
 7. **Manage account (Profile)** — Update details, photo, goals, and sync data when back on the network.
-
-### For dietitians / nutrition advisors
-
-- **Apply via API / web portal** — Submit Ghana Card, certificates, photo, and CV for admin review (backend + admin UI).
-- **After approval** — Listed in the API with admin-set rating and hourly rate; advisors can reply in chat via the **web advisor portal** (not in the mobile app today).
-
-### For administrators
-
-- **Review applications** — Approve or reject dietitian sign-ups and set listing rating and price.
-- **Oversee advice** — Access admin tools for application documents and consultation chat oversight.
+8. **Get AI coaching (Home)** — Virtual dietitian advice on the dashboard and after meal scans (Gemini + rule-based fallback).
 
 ### What the app is not trying to do (current scope)
 
 - It does **not** replace a doctor for emergencies or clinical diagnosis.
 - Food scanner macros are **reference values per dish type**, not a lab analysis of the exact portion on the plate.
-- **No in-app payments** — Paystack and checkout flows have been removed.
-- **No telehealth tab in the mobile app** — consultation chat remains on the backend for admin/advisor web use only.
+- **No human dietitian chat or telehealth** — coaching is AI-powered in the app.
 - There is no social feed, wearable-only mode, or full AI-generated workout library in this version.
 
 ### Main user journeys (summary)
@@ -50,7 +40,7 @@ AkwaabaFit AI helps people in Ghana **stay active, understand what they eat, and
 
 The repository contains two main parts:
 
-- **Backend** — Laravel API, admin web UI, hybrid food-scan service, Reverb configuration
+- **Backend** — Laravel API, public landing page, hybrid food-scan + AI dietitian coach
 - **Mobile** — Flutter app for iOS and Android
 
 ## What is implemented
@@ -60,7 +50,7 @@ The repository contains two main parts:
 | Area | Details |
 |------|---------|
 | **Auth** | Register, login, logout, forgot / reset password, health profile onboarding |
-| **Home dashboard** | Calories in/out, macro targets, local weather (Open-Meteo + GPS), wellness insight, quick actions |
+| **Home dashboard** | Calories in/out, macro targets, local weather (Open-Meteo + GPS), water tracker, **AI dietitian coach**, wellness insight |
 | **Stride (fitness)** | Step tracking (pedometer), foreground/background step sync, hourly activity logs, daily leaderboard |
 | **Food scanner** | Full-screen camera UI + **SCAN MEAL** FAB; uploads photo to `POST /api/nutrition/scan`; macros from bundled defaults → SQLite cache → server lookup |
 | **Nutrition** | Meal history by day, macro row (P/C/F), offline SQLite cache + server sync when online |
@@ -79,26 +69,9 @@ The repository contains two main parts:
 | **Profile** | Show, update, avatar upload |
 | **Dashboard** | Aggregates steps, meals, targets, weather |
 | **Fitness** | Step sync, hourly activity, today summary, daily leaderboard |
-| **Nutrition** | Log meal, **scan** (hybrid HF + Gemini), history, per-class lookup, full food catalog |
-| **Consultations** | Book (no payment), list my sessions, messaging + delta poll, typing — used by web advisor/admin flows |
-| **Dietitians** | Public listing API; application submit + status |
-| **Advisor** | Protected routes for in-app advisor role (web portal) |
-| **Devices** | FCM token register / unregister (optional; mobile app does not use Firebase today) |
-| **Broadcasting** | Client config for Reverb / Pusher-compatible WebSockets |
-
-**Scheduled sessions:** Live window starts at scheduled time, ends at session expiry (booking time + 2 hours for “ask now”). Messages are blocked with **402** while the session is still waiting.
-
-### Admin & web
-
-| URL | Purpose |
-|-----|---------|
-| `/admin/login` | Staff admin login |
-| `/admin/dietetics/unlock` | Shared-key unlock (`DIETETICS_REVIEW_KEY` in environment) |
-| `/admin/dietetics/applications` | Review pending dietitian applications; approve with **rating** + **listed hourly rate**; reject; download documents |
-| `/admin/advice` | Staff view of advice chats |
-| `/advisor/login` | Web login for nutrition advisors |
-
-Approved applications feed the public dietitian list API (photo, rating, hourly rate from admin fields).
+| **Nutrition** | Log meal, **scan** (hybrid HF + Gemini), history, per-class lookup, full food catalog, **meal advice** |
+| **Hydration** | Daily water goal and logging |
+| **Accountability** | Partner code linking |
 
 ### Food recognition (hybrid cloud scan)
 
@@ -117,7 +90,6 @@ Configure in backend `.env`: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY` (see `.en
 - **Hugging Face Inference** — primary Ghana food classifier for scans
 - **Google Gemini** — fallback when the classifier is uncertain
 - **Open-Meteo** — free local weather on device (GPS) and server; no API key
-- **Laravel Reverb** — WebSocket stack (optional; mobile uses polling for any future chat features)
 
 ## Architecture (high level)
 
@@ -240,7 +212,7 @@ Edit `.env` on the new machine (minimum):
 
 - `APP_URL` — URL you will use to reach the API (see below).
 - `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` — match the MySQL database you created.
-- Optional but recommended: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`, `DIETETICS_REVIEW_KEY`.
+- Optional but recommended: `HUGGINGFACE_API_TOKEN`, `GEMINI_API_KEY`.
 
 Create tables and seed food nutrition data:
 
@@ -264,7 +236,6 @@ JSON endpoints are under `/api` (e.g. `http://127.0.0.1:8080/api/login`).
 
 ```bash
 php artisan queue:work
-php artisan reverb:start
 ```
 
 **Quick check:**
@@ -326,7 +297,7 @@ flutter run --dart-define=API_BASE_URL=...
 2. Register a new user in the app or use an imported database account.
 3. Run the **food scanner** (camera + network required); confirm a dish name and **LOG MEAL**.
 4. Log steps on **Stride** and confirm **Home** updates after sync.
-5. Open admin in a browser: `http://127.0.0.1:8080/admin/login` (staff user) or dietetics unlock URL with review key.
+5. Open the landing page: `http://127.0.0.1:8080/` and confirm **Your Dietitian** coaching on Home.
 
 ---
 
@@ -358,13 +329,9 @@ If you use Git later: clone the repository, then follow **Step 1** (tools), **St
 | `APP_URL` | Public URL (storage links, signed portal URLs) |
 | `HUGGINGFACE_API_TOKEN` | Ghana food model inference |
 | `FOOD_SCAN_HF_MODEL` / `FOOD_SCAN_HF_THRESHOLD` | Classifier model and confidence cutoff |
-| `GEMINI_API_KEY` / `FOOD_SCAN_GEMINI_MODEL` | Fallback dish identification |
+| `GEMINI_API_KEY` / `FOOD_SCAN_GEMINI_MODEL` | Food scan fallback + virtual dietitian coaching |
 | `WEATHER_DEFAULT_LAT` / `WEATHER_DEFAULT_LON` | Weather fallback when mobile has no GPS (default Accra) |
-| `DIETETICS_REVIEW_KEY` | Unlock admin application review without staff account |
-| `DIETETICS_ALLOW_SHARED_KEY` | Set `false` in production |
-| `REVERB_*` | WebSocket server |
 | `QUEUE_CONNECTION` | Use `database` and run a queue worker in production |
-| `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_JSON` | Optional push (not used by current mobile build) |
 
 ## Testing
 
@@ -374,7 +341,7 @@ If you use Git later: clone the repository, then follow **Step 1** (tools), **St
 php artisan test
 ```
 
-Feature tests cover auth, profile, dashboard, steps, nutrition history, food nutrition lookup, consultations, scheduled sessions, messaging, and dietitian applications.
+Feature tests cover auth, profile, dashboard, steps, nutrition history, food nutrition lookup, and dietitian advice.
 
 ### Mobile
 
@@ -444,7 +411,7 @@ See the feature list above for scope; items like in-app telehealth, payments, we
 
 ## API reference
 
-JSON API routes live under `/api`. Admin and advisor pages are served as web routes on the same host.
+JSON API routes live under `/api`. The public marketing landing page is served at `/` on the same host.
 
 Key mobile endpoints:
 
@@ -460,8 +427,6 @@ Key mobile endpoints:
 
 - Public App Store / Play Store release packaging (signing, privacy policy pages)
 - Portion-size estimation from scan images
-- Bring consultation / dietitian chat back into the mobile app (backend already supports it)
-- Native Reverb client on mobile (polling used today where chat exists)
 - Rate limiting on login/register
 - Object storage (S3) for multi-server uploads
 - Expanded food model classes and nutrition database

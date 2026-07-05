@@ -22,8 +22,6 @@ use Laravel\Sanctum\HasApiTokens;
     'avatar_url',
     'password',
     'is_public_on_leaderboard',
-    'is_nutrition_advisor',
-    'is_staff_admin',
     'age',
     'gender',
     'height',
@@ -61,8 +59,6 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_public_on_leaderboard' => 'boolean',
-            'is_nutrition_advisor' => 'boolean',
-            'is_staff_admin' => 'boolean',
             'age' => 'integer',
             'height' => 'integer',
             'weight' => 'integer',
@@ -79,11 +75,6 @@ class User extends Authenticatable
     public function dailyStepLogs(): HasMany
     {
         return $this->hasMany(DailyStepLog::class);
-    }
-
-    public function consultations(): HasMany
-    {
-        return $this->hasMany(Consultation::class);
     }
 
     public function mealLogs(): HasMany

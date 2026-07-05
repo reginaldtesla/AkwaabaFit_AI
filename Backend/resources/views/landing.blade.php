@@ -682,7 +682,7 @@
         </div>
 
         <div class="hero-visual">
-          <div class="float-tag one">☀️ Accra weather + air tips</div>
+          <div class="float-tag one">☀️ Weather + air tips</div>
           <div class="phone-card">
             <img src="{{ asset('images/app_icon_logo.png') }}" alt="AkwaabaFit app icon">
             <div class="phone-stats">
@@ -930,7 +930,7 @@
       <div>
         <strong style="color: var(--ink);">AkwaabaFit</strong><br>
         Culturally adapted fitness &amp; nutrition for Ghanaians.<br>
-        © 2026 · Reginald, Bernard &amp; Klenam
+        © 2026 · Bernard, Reginald, &amp; Klenam
       </div>
       <div class="footer-links">
         <a href="{{ \App\Support\LandingLinks::supportMailto() }}">{{ config('landing.support_email') }}</a>
