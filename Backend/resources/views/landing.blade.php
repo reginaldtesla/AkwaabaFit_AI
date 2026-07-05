@@ -647,6 +647,8 @@
 <body>
   <div class="page-bg" aria-hidden="true"></div>
 
+  @php($apkDownloadUrl = \App\Support\LandingLinks::apkDownloadUrl())
+
   <header class="nav">
     <div class="wrap nav-inner">
       <a class="brand" href="#">
@@ -673,7 +675,7 @@
             AkwaabaFit is a mobile health app for everyday life here — track your steps, scan jollof and banku with AI, and get practical coaching that respects local food, weather, and busy schedules.
           </p>
           <div class="hero-ctas">
-            <a class="btn btn-primary" href="#download">Download APK</a>
+            <a class="btn btn-primary" href="{{ $apkDownloadUrl ?? '#download' }}" @if($apkDownloadUrl) rel="noopener" @endif>Download APK</a>
             <a class="btn btn-ghost" href="#features">See what it does</a>
           </div>
           <p class="hero-note">
@@ -901,9 +903,9 @@
               Download the Android beta APK or join the waitlist for updates. API lives at
               <strong>{{ parse_url(config('app.url'), PHP_URL_HOST) ?: 'api.tesnet.xyz' }}</strong> — Flutter app for physical devices only.
             </p>
-            @if (config('landing.apk_url'))
+            @if ($apkDownloadUrl)
             <p style="margin-top: 1rem;">
-              <a class="btn btn-ghost" style="background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.2);" href="{{ config('landing.apk_url') }}">Download APK</a>
+              <a class="btn btn-ghost" style="background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.2);" href="{{ $apkDownloadUrl }}" rel="noopener">Download APK</a>
             </p>
             @endif
           </div>
