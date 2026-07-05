@@ -41,6 +41,7 @@ use Laravel\Sanctum\HasApiTokens;
     'workout_time_preference',
     'workout_days_per_week',
     'profile_completed',
+    'last_seen_at',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
@@ -66,6 +67,7 @@ class User extends Authenticatable
             'daily_calories_target' => 'integer',
             'workout_days_per_week' => 'integer',
             'profile_completed' => 'boolean',
+            'last_seen_at' => 'datetime',
             'health_conditions' => 'array',
             'water_goal_ml' => 'integer',
             'meal_reminders_enabled' => 'boolean',

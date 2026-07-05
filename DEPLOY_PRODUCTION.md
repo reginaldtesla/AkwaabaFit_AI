@@ -25,6 +25,9 @@ GEMINI_API_KEY=your_key
 HUGGINGFACE_API_TOKEN=your_token
 # Optional landing page CTAs:
 # LANDING_APK_URL=https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=drive_link
+
+# Staff usage dashboard at /admin
+# ADMIN_PASSWORD=your-strong-password
 # LANDING_BETA_FORM_ACTION=
 # LANDING_SUPPORT_EMAIL=support@akwaabafit.com
 ```

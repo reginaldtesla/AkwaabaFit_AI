@@ -11,6 +11,7 @@ use App\Http\Controllers\HydrationController;
 use App\Http\Controllers\NutritionController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Middleware\RecordUserLastSeen;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -23,7 +24,7 @@ Route::post('/forgot-password', [PasswordResetController::class, 'forgot']);
 Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 
 // Protected Routes
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', RecordUserLastSeen::class])->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
