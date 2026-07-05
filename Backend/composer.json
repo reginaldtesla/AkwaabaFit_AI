@@ -10,9 +10,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "google/auth": "^1.50",
         "laravel/framework": "^13.0",
-        "laravel/reverb": "^1.10",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0"
     },
@@ -48,10 +46,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" \"php artisan reverb:start\" --names='server,queue,reverb'"
-        ],
-        "reverb": [
-            "php artisan reverb:start"
+            "npx concurrently -c \"#93c5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1\" --names='server,queue'"
         ],
         "queue": [
             "php artisan queue:work --tries=3 --sleep=1"

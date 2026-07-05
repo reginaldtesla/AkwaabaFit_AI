@@ -24,7 +24,7 @@ APP_URL=https://api.tesnet.xyz
 GEMINI_API_KEY=your_key
 HUGGINGFACE_API_TOKEN=your_token
 # Optional landing page CTAs:
-# LANDING_APK_URL=https://api.tesnet.xyz/downloads/akwaabafit.apk
+# LANDING_APK_URL=https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=drive_link
 # LANDING_BETA_FORM_ACTION=
 # LANDING_SUPPORT_EMAIL=support@akwaabafit.com
 ```

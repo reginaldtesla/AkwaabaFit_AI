@@ -334,30 +334,15 @@ SESSION_ENCRYPT=false
 
 QUEUE_CONNECTION=database
 CACHE_STORE=database
-BROADCAST_CONNECTION=reverb
+BROADCAST_CONNECTION=log
 
 # Weather (Open-Meteo — optional Accra fallback if GPS unavailable)
 WEATHER_DEFAULT_LAT=5.6037
 WEATHER_DEFAULT_LON=-0.1870
 WEATHER_DEFAULT_LABEL="Accra, GH"
 
-# Admin dietetics review
-DIETETICS_REVIEW_KEY=long-random-string-for-emergency-unlock
-DIETETICS_ALLOW_SHARED_KEY=false
-
-# Firebase push
-FCM_PROJECT_ID=your-firebase-project-id
-FCM_SERVICE_ACCOUNT_JSON=/var/www/AkwaabaFitAIProject/Backend/storage/app/private/firebase-adminsdk.json
-
-# Reverb (optional realtime — mobile uses polling today)
-REVERB_APP_ID=akwaaba-prod
-REVERB_APP_KEY=change-me-reverb-key
-REVERB_APP_SECRET=change-me-reverb-secret
-REVERB_HOST=api.YOUR-DOMAIN.com
-REVERB_PORT=443
-REVERB_SCHEME=https
-REVERB_SERVER_HOST=127.0.0.1
-REVERB_SERVER_PORT=8080
+# Landing page APK download (Google Drive share link or direct URL)
+# LANDING_APK_URL=https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=drive_link
 
 LOG_CHANNEL=daily
 LOG_LEVEL=warning
@@ -573,31 +558,9 @@ Add (keep any existing TesNet lines):
 * * * * * cd /var/www/AkwaabaFitAIProject/Backend && php artisan schedule:run >> /dev/null 2>&1
 ```
 
-### 8.3 Optional — Reverb WebSockets
+### 8.3 Queue worker (recommended)
 
-Mobile chat uses **HTTP polling** today; Reverb is optional.
-
-```bash
-sudo nano /etc/systemd/system/akwaabafit-reverb.service
-```
-
-```ini
-[Unit]
-Description=AkwaabaFit Reverb WebSocket server
-After=network.target
-
-[Service]
-User=www-data
-Group=www-data
-Restart=always
-WorkingDirectory=/var/www/AkwaabaFitAIProject/Backend
-ExecStart=/usr/bin/php artisan reverb:start --host=127.0.0.1 --port=8080
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Only enable if you configure clients to use Reverb.
+Run `php artisan queue:work` via Supervisor or systemd if you use queued jobs.
 
 ---
 
