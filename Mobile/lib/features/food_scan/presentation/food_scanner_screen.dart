@@ -174,10 +174,7 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
         .where((d) => d.confidence >= minConf)
         .toList();
     if (detections.isEmpty) {
-      throw NotFoodScanException(
-        detail: scan.message ??
-            "This doesn't look like food. Point your camera at a meal on a plate and scan again.",
-      );
+      throw const NotFoodScanException();
     }
 
     final items = <ScannedFoodItem>[];
@@ -294,21 +291,31 @@ class FoodScannerNotifier extends AsyncNotifier<FoodScanResult?> {
     if (e is NotFoodScanException) return e;
     final msg = _friendlyError(e);
     if (msg.contains("doesn't look like food") ||
+        msg.contains('Not recognized') ||
+        msg.contains("couldn't identify") ||
         msg.contains('Point your camera at a meal')) {
-      return NotFoodScanException(detail: msg);
+      return const NotFoodScanException();
     }
     return msg;
   }
 
+  String _userMessage(Object e) => _friendlyError(e);
+
   String _friendlyError(Object e) {
-    if (e is NotFoodScanException) return e.detail;
+    if (e is NotFoodScanException) return e.title;
     if (e is StateError) return e.message;
     final raw = e.toString();
     if (raw.contains('SocketException') || raw.contains('Connection')) {
-      return 'Could not reach the scan service. Check your connection.';
+      return 'No internet';
+    }
+    if (raw.contains('timed out') || raw.contains('Timeout')) {
+      return 'Timed out';
     }
     if (raw.contains('DioException')) {
-      return "This doesn't look like food. Point your camera at a meal on a plate and scan again.";
+      return 'Scan failed';
+    }
+    if (raw.startsWith('Bad state: ')) {
+      return raw.substring('Bad state: '.length);
     }
     return raw.replaceFirst('Exception: ', '');
   }
@@ -878,84 +885,60 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
     final notFood = error is NotFoodScanException;
     final title = notFood
         ? error.title
-        : 'Could not scan';
-    final detail = notFood
-        ? error.detail
         : (error is String
             ? error
-            : "This doesn't look like food. Point your camera at a meal on a plate and scan again.");
+            : error.toString().replaceFirst('Bad state: ', '').replaceFirst('Exception: ', ''));
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                notFood ? Icons.no_food_outlined : Icons.error_outline,
+                color: Colors.white.withValues(alpha: 0.9),
+                size: 32,
+              ),
             ),
-            child: Icon(
-              Icons.no_food_outlined,
-              color: Colors.white.withValues(alpha: 0.9),
-              size: 32,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            detail,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              color: Colors.white.withValues(alpha: 0.82),
-              fontSize: 13,
-              height: 1.45,
-            ),
-          ),
-          if (notFood) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             Text(
-              'Tip: fill the frame with the plate, use daylight if you can, then tap the shutter once.',
+              title,
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                color: Colors.white.withValues(alpha: 0.55),
-                fontSize: 12,
-                height: 1.4,
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextButton(
+              onPressed: () async {
+                ref.read(foodScannerProvider.notifier).clearScan();
+                await _resumeLivePreview();
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 12,
+                ),
+              ),
+              child: Text(
+                'Try again',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
               ),
             ),
           ],
-          const SizedBox(height: 18),
-          TextButton(
-            onPressed: () async {
-              ref.read(foodScannerProvider.notifier).clearScan();
-              await _resumeLivePreview();
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
-              backgroundColor: Colors.white.withValues(alpha: 0.15),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 28,
-                vertical: 12,
-              ),
-            ),
-            child: Text(
-              'Scan a meal',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

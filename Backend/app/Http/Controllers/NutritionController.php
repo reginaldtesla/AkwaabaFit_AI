@@ -204,7 +204,7 @@ class NutritionController extends Controller
                 'provider' => $result['provider'],
                 'strategy' => $result['strategy'],
                 'detections' => [],
-                'message' => "We couldn't identify the food. Try a brighter photo with the whole plate in frame, or log the meal manually.",
+                'message' => 'Not recognized',
             ]);
         }
 

@@ -91,8 +91,7 @@ class FoodScanApiService {
       strategy: map['strategy']?.toString() ?? 'unknown',
       detections: detections,
       message: notFood
-          ? (map['message']?.toString() ??
-              "This doesn't look like food. Point your camera at a meal on a plate and scan again.")
+          ? (map['message']?.toString() ?? 'Not recognized')
           : map['message']?.toString(),
     );
   }
