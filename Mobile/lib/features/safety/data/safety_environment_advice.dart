@@ -39,7 +39,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.thunderstorm,
       headlineColor: Colors.deepPurple,
       quote:
-          '"Skies are acting up today—when thunder rolls, tuck indoors if you can, skip open fields, and save your walk for when things feel calmer. Small choices keep you safer."',
+          '"Skies are active today—prefer indoors if you can, skip open fields, and keep outdoor walks for calmer conditions."',
       tipAIcon: Icons.home_outlined,
       tipALabel: 'Prefer indoors',
       tipBIcon: Icons.flash_off_outlined,
@@ -54,7 +54,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.umbrella,
       headlineColor: Colors.blue.shade700,
       quote:
-          '"Rainy day—outdoor walks can wait. Your steps still count indoors: pace at home, use stairs, or a covered corridor. Stay dry and keep moving gently."',
+          '"Rainy day—outdoor walks can wait. Indoor pacing, stairs, or a covered corridor keep you moving without getting wet."',
       tipAIcon: Icons.home_outlined,
       tipALabel: 'Move indoors',
       tipBIcon: Icons.stairs_outlined,
@@ -68,7 +68,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.ac_unit,
       headlineColor: Colors.lightBlue.shade700,
       quote:
-          '"Bundle up in cozy layers today—warm socks, steady footing on icy bits, and time indoors to warm up afterward make cold weather feel kinder."',
+          '"Bundle up in warm layers today—steady footing on icy bits, and time indoors afterward if the cold bites."',
       tipAIcon: Icons.layers_outlined,
       tipALabel: 'Warm layers',
       tipBIcon: Icons.directions_walk,
@@ -92,7 +92,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.air,
       headlineColor: Colors.orange.shade800,
       quote:
-          '"The air is a bit harsh today—shorter outdoor bursts, easy pacing, and a damp cloth mask can help if dust bothers you. Pause when you need to and listen to how your body feels."',
+          '"The air is a bit harsh today—prefer shorter outdoor bursts, easy pacing, and a pause when dust bothers you."',
       tipAIcon: Icons.masks_outlined,
       tipALabel: 'Limit outdoors',
       tipBIcon: Icons.self_improvement_outlined,
@@ -107,8 +107,8 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.cloud_outlined,
       headlineColor: Colors.blueGrey.shade600,
       quote: t >= 28
-          ? '"Cloud cover is giving you a little shade today—still lovely for a stroll; light fabrics and short breaks help you stay comfy."'
-          : '"Nice cloud-softened light today—perfect for an easy walk. A light layer is plenty if a breeze picks up."',
+          ? '"Cloud cover softens the sun today—light fabrics and short breaks help if you head out."'
+          : '"Soft light today—an easy walk suits the conditions. Keep a light layer handy if a breeze picks up."',
       tipAIcon: Icons.directions_walk,
       tipALabel: 'Easy outing',
       tipBIcon: Icons.beach_access_outlined,
@@ -123,7 +123,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.wb_sunny_outlined,
       headlineColor: Colors.amber.shade700,
       quote:
-          '"The sun is quite strong today—light cotton, a hat if you like, and shade breaks will keep you feeling steadier out there."',
+          '"The sun is quite strong today—light cotton, a hat if you like, and shade breaks when you need them."',
       tipAIcon: Icons.checkroom_outlined,
       tipALabel: 'Light cotton',
       tipBIcon: Icons.beach_access_outlined,
@@ -137,7 +137,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.wb_sunny_outlined,
       headlineColor: Colors.amber.shade600,
       quote:
-          '"Lovely warmth outside—a breathable outfit, a hat if you like, and breaks in the shade help you enjoy it without feeling drained."',
+          '"Warm outside—a breathable outfit, a hat if you like, and breaks in the shade help you stay comfortable."',
       tipAIcon: Icons.checkroom_outlined,
       tipALabel: 'Breathable wear',
       tipBIcon: Icons.beach_access_outlined,
@@ -151,7 +151,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
       headlineIcon: Icons.wb_cloudy_outlined,
       headlineColor: Colors.teal.shade600,
       quote:
-          '"Pretty gentle weather today—ideal for moving your body at an easy pace. A light layer nearby is nice if a breeze shows up."',
+          '"Gentle weather today—easy for moving at a comfortable pace. Keep a light layer nearby if a breeze shows up."',
       tipAIcon: Icons.directions_walk,
       tipALabel: 'Easy movement',
       tipBIcon: Icons.layers_outlined,
@@ -163,11 +163,11 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
     headlineLabel: 'Cool air',
     headlineIcon: Icons.ac_unit_outlined,
     headlineColor: Colors.blueGrey.shade700,
-      quote:
-          '"It is a cooler day—warm layers, comfy socks, and shorter trips outside if you chill easily. You will warm up quickly once you are moving."',
-      tipAIcon: Icons.dry_cleaning_outlined,
-      tipALabel: 'Warm layers',
-      tipBIcon: Icons.home_outlined,
-      tipBLabel: 'Warm up indoors',
+    quote:
+        '"Cooler day—warm layers, comfy socks, and shorter trips outside if you chill easily."',
+    tipAIcon: Icons.dry_cleaning_outlined,
+    tipALabel: 'Warm layers',
+    tipBIcon: Icons.home_outlined,
+    tipBLabel: 'Warm up indoors',
   );
 }

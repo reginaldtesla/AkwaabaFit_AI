@@ -1148,7 +1148,7 @@ class _StrideWeatherContextCard extends ConsumerWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Allow location and connect to load local weather for Stride tips.',
+                'Local weather unavailable right now. Stride still tracks your steps.',
                 style: GoogleFonts.inter(
                   fontSize: 12,
                   height: 1.35,
@@ -1325,15 +1325,24 @@ class _IndoorStrideTipsWhenRain extends ConsumerWidget {
               runSpacing: 8,
               children: tips
                   .map(
-                    (t) => Chip(
-                      label: Text(t),
-                      labelStyle: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    (t) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
                       ),
-                      backgroundColor: Colors.white,
-                      side: BorderSide(color: Colors.blue.shade100),
-                      visualDensity: VisualDensity.compact,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Text(
+                        t,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey.shade800,
+                        ),
+                      ),
                     ),
                   )
                   .toList(),
@@ -1412,11 +1421,11 @@ class _WellnessAdviceLiveCardState extends ConsumerState<_WellnessAdviceLiveCard
           'and recover well tonight.';
     } else if (progress >= 0.92) {
       body =
-          '${streakNote}You\'re inches from your goal — only about $left steps left. Finish when it feels good; '
-          'you\'ve already done the hard part.';
+          '${streakNote}You\'re close to your goal — about $left steps left. Finish when it fits your day; '
+          'you\'ve already done most of the work.';
     } else if (progress >= 0.75) {
       body =
-          '${streakNote}Three quarters of your goal are done. Steady wins — one more walk or errand can carry you home.';
+          '${streakNote}Three quarters of your goal are done. Keep a steady pace — another short bout of walking adds up.';
     } else if (progress >= 0.5) {
       body =
           '${streakNote}Halfway there today. That\'s meaningful movement — keep stacking small wins.';
@@ -1425,12 +1434,11 @@ class _WellnessAdviceLiveCardState extends ConsumerState<_WellnessAdviceLiveCard
           '${streakNote}You\'re building momentum. A few extra minutes on your feet later still adds up.';
     } else if (steps > 0) {
       body =
-          '${streakNote}Nice start — every step trains your energy for later. Move when it fits your day; '
+          '${streakNote}Nice start — every step counts. Move when it fits your day; '
           'no pressure to sprint.';
     } else {
       body =
-          'Today is wide open. When you\'re ready, a short walk is enough to lift mood and focus — '
-          'you\'ve got this.';
+          'Today is wide open. When you\'re ready, a short walk is a solid place to begin.';
     }
 
     final pulseLine = _movingPulse

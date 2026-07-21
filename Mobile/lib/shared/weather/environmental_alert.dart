@@ -32,7 +32,7 @@ class EnvironmentalAlert {
       final extra = pmParts.isEmpty ? '' : ' (${pmParts.join(', ')})';
 
       return EnvironmentalAlert(
-        title: 'Harmattan / Air Quality Alert',
+        title: 'Air Quality Alert',
         message:
             'Air quality is poor today$extra. Limit intense outdoor workouts, keep workouts lighter today, and consider a mask if sensitive.',
       );

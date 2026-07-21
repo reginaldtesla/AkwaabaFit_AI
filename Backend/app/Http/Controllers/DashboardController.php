@@ -363,7 +363,7 @@ class DashboardController extends Controller
             $extra = count($pmText) ? (' ('.implode(', ', $pmText).')') : '';
 
             return [
-                'Harmattan / Air Quality Alert',
+                'Air Quality Alert',
                 'Air quality is poor today'.$extra.'. Limit intense outdoor workouts, keep workouts lighter today, and consider a mask if sensitive.',
             ];
         }

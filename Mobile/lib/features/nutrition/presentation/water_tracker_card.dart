@@ -61,42 +61,46 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
   }
 
   Future<void> _addGlass() async {
+    if (_busy) return;
     setState(() => _busy = true);
-    final result = await ref.read(hydrationServiceProvider).logGlass(
-          goalMl: _goalMl,
-        );
-    if (!mounted) return;
-    if (result.success) {
-      setState(() {
-        _totalMl = result.totalMl;
-        _fromCache = !result.syncedOnline;
-      });
-      unawaited(
-        WaterGoalAchievementNotifier.evaluate(
-          totalMl: result.totalMl,
-          goalMl: _goalMl,
-        ),
-      );
-      final hitGoal = _goalMl > 0 && result.totalMl >= _goalMl;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            hitGoal
-                ? 'Daily water goal reached — nice work!'
-                : result.syncedOnline
-                    ? 'Glass added (+250 ml)'
-                    : 'Glass saved offline (+250 ml) — will sync when online',
+    try {
+      final result = await ref.read(hydrationServiceProvider).logGlass(
+            goalMl: _goalMl,
+          );
+      if (!mounted) return;
+      if (result.success) {
+        setState(() {
+          _totalMl = result.totalMl;
+          _fromCache = !result.syncedOnline;
+        });
+        unawaited(
+          WaterGoalAchievementNotifier.evaluate(
+            totalMl: result.totalMl,
+            goalMl: _goalMl,
           ),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not save water. Please sign in and try again.'),
-        ),
-      );
+        );
+        final hitGoal = _goalMl > 0 && result.totalMl >= _goalMl;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              hitGoal
+                  ? 'Daily water goal reached — nice work!'
+                  : result.syncedOnline
+                      ? 'Glass added (+250 ml)'
+                      : 'Glass saved offline (+250 ml) — will sync when online',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not save water. Please sign in and try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    setState(() => _busy = false);
   }
 
   @override

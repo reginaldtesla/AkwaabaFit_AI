@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -189,19 +191,17 @@ class HydrationService {
     };
     await db.enqueueOutbox(type: 'hydration_log', payload: payload);
 
-    if (await isDeviceOnline()) {
-      await syncPendingIfAny();
-      return HydrationLogResult(
-        success: true,
-        totalMl: totalMl,
-        syncedOnline: true,
-      );
+    // Local write is the source of truth for the tap — sync in the background
+    // so the button does not wait on remote latency / the full outbox drain.
+    final online = await isDeviceOnline();
+    if (online) {
+      unawaited(syncPendingIfAny());
     }
 
     return HydrationLogResult(
       success: true,
       totalMl: totalMl,
-      syncedOnline: false,
+      syncedOnline: online,
     );
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +9,7 @@ import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/features/safety/data/safety_environment_advice.dart';
+import 'package:mobile/features/safety/data/safety_health_tips.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/weather/dashboard_weather_merge.dart';
 import 'package:mobile/shared/weather/device_weather_service.dart';
@@ -315,7 +318,9 @@ class HealthSafetyHubScreen extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
       child: Column(
         children: [
-          _buildWelcomeCard(data.userName),
+          _RotatingHealthTipsCard(
+            tempCelsius: data.temperatureCelsius.toDouble(),
+          ),
           const SizedBox(height: 24),
           _buildEnvironmentCard(ref, data),
           const SizedBox(height: 24),
@@ -327,63 +332,6 @@ class HealthSafetyHubScreen extends ConsumerWidget {
               color: textLight,
               fontWeight: FontWeight.w500,
               height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWelcomeCard(String name) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 24,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: softTint,
-              shape: BoxShape.circle,
-              border: Border.all(color: calmTint.withValues(alpha: 0.5)),
-            ),
-            child: const Icon(Icons.spa, color: primary, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome back, $name',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: textMain,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'See outdoor guidance and dietitian tips for your meals.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    height: 1.4,
-                    color: textLight,
-                  ),
-                ),
-              ],
             ),
           ),
         ],
@@ -591,6 +539,240 @@ class HealthSafetyHubScreen extends ConsumerWidget {
           color: Colors.black.withValues(alpha: 0.03),
           blurRadius: 24,
           offset: const Offset(0, 4),
+        ),
+      ],
+    );
+  }
+}
+
+/// Shows the local dietitian tip bank immediately; Gemini refreshes in new tips.
+class _RotatingHealthTipsCard extends ConsumerStatefulWidget {
+  const _RotatingHealthTipsCard({this.tempCelsius});
+
+  final double? tempCelsius;
+
+  @override
+  ConsumerState<_RotatingHealthTipsCard> createState() =>
+      _RotatingHealthTipsCardState();
+}
+
+class _RotatingHealthTipsCardState extends ConsumerState<_RotatingHealthTipsCard>
+    with SingleTickerProviderStateMixin {
+  static const Color _primary = Color(0xFF1A5D1A);
+  static const Color _softTint = Color(0xFFF2F8F2);
+  static const Color _textMain = Color(0xFF334155);
+  static const Color _textLight = Color(0xFF64748B);
+  static const Color _rule = Color(0xFFE2E8F0);
+  static const Duration _interval = Duration(seconds: 15);
+
+  List<SafetyHealthTip> _tips =
+      List<SafetyHealthTip>.from(kSafetyHealthTipsLocal);
+  int _index = 0;
+  bool _refreshing = false;
+  String _source = 'local';
+  Timer? _timer;
+  late final AnimationController _progress;
+
+  @override
+  void initState() {
+    super.initState();
+    _progress = AnimationController(vsync: this, duration: _interval);
+    _startRotation();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadTips(refresh: false, resetIndex: false));
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _progress.dispose();
+    super.dispose();
+  }
+
+  void _startRotation() {
+    _timer?.cancel();
+    if (_tips.isEmpty) return;
+    _progress
+      ..reset()
+      ..forward();
+    _timer = Timer.periodic(_interval, (_) => unawaited(_advance()));
+  }
+
+  Future<void> _advance() async {
+    if (!mounted || _tips.isEmpty) return;
+    final next = _index + 1;
+    if (next >= _tips.length) {
+      await _loadTips(refresh: true, resetIndex: true);
+      return;
+    }
+    setState(() => _index = next);
+    _progress
+      ..reset()
+      ..forward();
+  }
+
+  Future<void> _loadTips({
+    required bool refresh,
+    required bool resetIndex,
+  }) async {
+    setState(() => _refreshing = true);
+    final dash = ref.read(dashboardDataProvider).valueOrNull;
+    final weather = ref.read(deviceWeatherProvider).valueOrNull;
+    final merged = dash != null
+        ? applyDeviceWeatherToDashboard(dash, weather)
+        : null;
+
+    final batch = await fetchSafetyHealthTips(
+      tempCelsius: merged?.tempCelsius ?? widget.tempCelsius,
+      weatherMain: merged?.weatherMain,
+      airQualityAqi: merged?.airQualityAqi,
+      refresh: refresh,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _tips = batch.tips.isNotEmpty
+          ? batch.tips
+          : List<SafetyHealthTip>.from(kSafetyHealthTipsLocal);
+      _source = batch.source;
+      if (resetIndex) _index = 0;
+      if (_index >= _tips.length) _index = 0;
+      _refreshing = false;
+    });
+    _startRotation();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tip = _tips.isEmpty
+        ? kSafetyHealthTipsLocal.first
+        : _tips[_index.clamp(0, _tips.length - 1)];
+    final total = _tips.isEmpty ? 1 : _tips.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'YOUR DIETITIAN',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: _textLight,
+                letterSpacing: 1.0,
+              ),
+            ),
+            const Spacer(),
+            if (_refreshing)
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _primary,
+                ),
+              )
+            else
+              Text(
+                '${_index + 1} / $total',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _textLight,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _rule),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 450),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.08),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Row(
+                  key: ValueKey<String>('${_source}_$_index'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        color: _softTint,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(tip.icon, color: _primary, size: 22),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tip.title,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: _textMain,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            tip.body,
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: _textLight,
+                              height: 1.45,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              AnimatedBuilder(
+                animation: _progress,
+                builder: (context, _) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: _progress.value,
+                      minHeight: 3,
+                      backgroundColor: _rule,
+                      color: _primary,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ],
     );

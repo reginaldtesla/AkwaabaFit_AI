@@ -215,7 +215,7 @@ class ActivityController extends Controller
         $pct = (int) round(($stepsToday / $goal) * 100);
 
         if ($main === 'thunderstorm') {
-            return 'Storm advisory — stay indoors. Indoor steps still count toward your goal.';
+            return 'Storm advisory — prefer indoors. Indoor steps still count toward your goal.';
         }
         if (in_array($main, ['rain', 'drizzle'], true)) {
             return 'Rain today — skip the outdoor walk if you prefer. Pace at home or use stairs; steps still count.';
@@ -227,7 +227,7 @@ class ActivityController extends Controller
             return "High heat ({$tempCelsius}°C) — shorter outings, shade breaks, and lower intensity.";
         }
         if ($pct < 45) {
-            return "You are at {$pct}% of your step goal — a 12-minute indoor or outdoor walk can help.";
+            return "You are at {$pct}% of your step goal — a short indoor or outdoor walk closes more of the gap.";
         }
 
         return 'Conditions look workable — move at a pace that feels comfortable today.';

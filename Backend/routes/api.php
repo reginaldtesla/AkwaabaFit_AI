@@ -11,6 +11,7 @@ use App\Http\Controllers\HydrationController;
 use App\Http\Controllers\NutritionController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SafetyController;
 use App\Http\Middleware\RecordUserLastSeen;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -58,6 +59,8 @@ Route::middleware(['auth:sanctum', RecordUserLastSeen::class])->group(function (
 
     Route::get('/hydration/today', [HydrationController::class, 'today']);
     Route::post('/hydration/log', [HydrationController::class, 'log']);
+
+    Route::get('/safety/health-tips', [SafetyController::class, 'healthTips']);
 
     Route::get('/accountability', [AccountabilityController::class, 'show']);
     Route::post('/accountability/link', [AccountabilityController::class, 'link']);

@@ -1576,7 +1576,7 @@ class DashboardScreen extends ConsumerWidget {
           ? 'Stormy — stay indoors; home steps still count.'
           : 'Rainy — walk indoors or use stairs.';
     } else if (isPoorAir) {
-      weatherNote = 'Harmattan air — prefer shorter outdoor walks.';
+      weatherNote = 'Poor air — prefer shorter outdoor walks.';
     }
 
     return _panel(

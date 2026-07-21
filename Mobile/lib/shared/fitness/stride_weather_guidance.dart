@@ -33,7 +33,7 @@ abstract final class StrideWeatherGuidance {
   }) {
     if (discouragesOutdoorWalk(weatherMain)) {
       return isStorm(weatherMain)
-          ? 'Storm — move indoors; steps still count'
+          ? 'Storm — prefer indoor movement; steps still count'
           : 'Rain — indoor steps count toward your goal';
     }
     if (isHighHeat(tempCelsius)) {
@@ -43,9 +43,10 @@ abstract final class StrideWeatherGuidance {
       return 'Poor air — prefer indoor movement';
     }
     final m = weatherMain?.toLowerCase() ?? '';
-    if (m == 'clear') return 'Clear skies — good conditions for a walk';
+    if (m == 'clear') return 'Clear skies — workable conditions for a walk';
     return 'Move at a pace that feels right for today';
   }
+
   static bool discouragesOutdoorWalk(String? weatherMain) {
     final m = weatherMain?.trim().toLowerCase() ?? '';
     return m == 'rain' || m == 'drizzle' || m == 'thunderstorm';
@@ -85,30 +86,30 @@ abstract final class StrideWeatherGuidance {
 
     if (isStorm(weatherMain)) {
       if (progress >= 1.0) {
-        return '${streakNote}Stormy weather today, but you still hit your step goal — well done. '
-            'Keep movement gentle and indoors when skies are active.';
+        return '${streakNote}Stormy weather today, and you still hit your step goal — well done. '
+            'Keep movement gentle and indoors while skies are active.';
       }
       if (steps > 0) {
-        return '${streakNote}Thunderstorms nearby — stay indoors. Your $steps steps already count; '
+        return '${streakNote}Thunderstorms nearby — prefer indoors. Your $steps steps already count; '
             'add more with marching, stairs, or light cardio at home (~$left to goal).';
       }
       return 'Storms today — skip outdoor walks. Indoor steps count the same: '
-          'march in place, use stairs, or walk inside for about 12–15 minutes.';
+          'march in place, use stairs, or walk inside.';
     }
 
     if (progress >= 1.0) {
-      return '${streakNote}Rainy day outside, but you reached your goal — great work. '
+      return '${streakNote}Rainy day outside, and you reached your goal — great work. '
           'Indoor movement kept you on track without getting wet.';
     }
     if (progress >= 0.5) {
       return '${streakNote}It\'s raining, so skip the outdoor walk. You\'re already halfway — '
-          'finish indoors with stairs or pacing at home (~$left steps left).';
+          'stairs or pacing at home close the gap (~$left steps left).';
     }
     if (steps > 0) {
       return '${streakNote}Wet weather today — stay dry. Your phone still counts indoor steps; '
           'try a covered corridor or marching at home (~$left to goal).';
     }
     return 'Rain today — you don\'t need to go outside. Indoor steps count: '
-        'walk at home, use stairs, or march in place for 12–15 minutes.';
+        'walk at home, use stairs, or march in place.';
   }
 }
