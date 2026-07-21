@@ -7,6 +7,11 @@ DashboardData applyDeviceWeatherToDashboard(
   DeviceWeatherSnapshot? weather,
 ) {
   if (weather == null || !weather.isUsable) return base;
+  // Require a real condition string — never invent drizzle / air alerts.
+  final main = weather.weatherMain?.trim();
+  if (main == null || main.isEmpty) {
+    return base;
+  }
 
   final alert = EnvironmentalAlert.build(
     tempCelsius: weather.tempCelsius,
@@ -26,8 +31,8 @@ DashboardData applyDeviceWeatherToDashboard(
     burnedKcal: base.burnedKcal,
     tempCelsius: weather.tempCelsius,
     location: weather.location,
-    weatherMain: weather.weatherMain ?? base.weatherMain,
-    weatherDescription: weather.weatherDescription ?? base.weatherDescription,
+    weatherMain: weather.weatherMain,
+    weatherDescription: weather.weatherDescription,
     alertTitle: alert.title,
     alertMessage: alert.message,
     currentSteps: base.currentSteps,

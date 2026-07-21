@@ -25,12 +25,19 @@ class OpenMeteoService
      */
     public function snapshot(?float $lat = null, ?float $lon = null): array
     {
+        $hasClientCoords = $lat !== null && $lon !== null;
         $lat = $lat ?? (float) config('services.weather.default_lat', 5.6037);
         $lon = $lon ?? (float) config('services.weather.default_lon', -0.1870);
         $fallbackLabel = (string) config('services.weather.default_label', 'Accra, GH');
+        $unavailableLabel = 'Enable location for local weather';
 
         $lat = max(-90.0, min(90.0, $lat));
         $lon = max(-180.0, min(180.0, $lon));
+
+        // Without the user's coordinates, do not present default Accra weather as local truth.
+        if (! $hasClientCoords) {
+            return $this->emptySnapshot($unavailableLabel);
+        }
 
         $cacheKey = sprintf('openmeteo:%.3f:%.3f', $lat, $lon);
         $ttlMinutes = (int) config('services.weather.cache_minutes', 15);
@@ -45,7 +52,7 @@ class OpenMeteoService
             try {
                 return $this->fetch($lat, $lon, $fallbackLabel);
             } catch (\Throwable) {
-                return $this->emptySnapshot($fallbackLabel);
+                return $this->emptySnapshot($unavailableLabel);
             }
         }
     }

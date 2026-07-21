@@ -11,7 +11,8 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
   // Request permission (Android 10+). iOS uses motion permission string.
   final status = await Permission.activityRecognition.request();
   if (!status.isGranted) {
-    yield 0;
+    final cached = await StepsOfflineRecorder.cachedTodayStepsOrNull();
+    yield cached ?? 0;
     return;
   }
   await BackgroundStepTrackingBootstrap.onActivityPermissionGranted();
@@ -23,6 +24,13 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
 
   var currentDay = dayKey(DateTime.now());
   var calc = TodayStepsFromSensor();
+
+  // Show last known steps immediately so Stride is not stuck at 0 while the
+  // pedometer stream warms up.
+  final seed = await StepsOfflineRecorder.cachedTodayStepsOrNull();
+  if (seed != null && seed > 0) {
+    controller.add(seed);
+  }
 
   // Day rollover can happen without a step event; reset UI to 0 at midnight.
   final rollover = Timer.periodic(const Duration(minutes: 1), (_) async {
@@ -40,19 +48,27 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
     sub = Pedometer.stepCountStream.listen(
       (event) async {
         final today = await calc.update(event.steps);
-        controller.add(today);
-        unawaited(StepsOfflineRecorder.onStepsChanged(today));
+        final cached = await StepsOfflineRecorder.cachedTodayStepsOrNull() ?? 0;
+        // Never let a transient sensor glitch wipe a higher already-saved total.
+        final best = today >= cached ? today : cached;
+        controller.add(best);
+        if (today >= cached) {
+          unawaited(StepsOfflineRecorder.onStepsChanged(today));
+        }
       },
-      onError: (_) {
-        controller.add(0);
+      onError: (_) async {
+        final cached = await StepsOfflineRecorder.cachedTodayStepsOrNull();
+        if (cached != null) {
+          controller.add(cached);
+        }
       },
       cancelOnError: false,
     );
   } catch (_) {
-    controller.add(0);
+    final cached = await StepsOfflineRecorder.cachedTodayStepsOrNull();
+    controller.add(cached ?? 0);
   }
 
   ref.onDispose(() => sub?.cancel());
   yield* controller.stream;
 });
-

@@ -6,6 +6,7 @@ use App\Models\DailyStepLog;
 use App\Models\MealLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -155,23 +156,23 @@ class DashboardTest extends TestCase
     private function fakeOpenMeteo(
         float $temp = 29.4,
         int $weatherCode = 45,
-        int $aqi = 4,
+        int $aqi = 40,
     ): void {
         Http::fake([
-            'api.open-meteo.com/*' => Http::response([
+            'https://api.open-meteo.com/*' => Http::response([
                 'current' => [
                     'temperature_2m' => $temp,
                     'weather_code' => $weatherCode,
                 ],
             ], 200),
-            'air-quality-api.open-meteo.com/*' => Http::response([
+            'https://air-quality-api.open-meteo.com/*' => Http::response([
                 'current' => [
                     'us_aqi' => $aqi,
                     'pm2_5' => 55.2,
                     'pm10' => 140.7,
                 ],
             ], 200),
-            'nominatim.openstreetmap.org/*' => Http::response([
+            'https://nominatim.openstreetmap.org/*' => Http::response([
                 'display_name' => 'Accra, Greater Accra Region, Ghana',
                 'address' => [
                     'city' => 'Accra',
@@ -179,5 +180,62 @@ class DashboardTest extends TestCase
                 ],
             ], 200),
         ]);
+    }
+
+    public function test_dashboard_good_us_aqi_does_not_alert(): void
+    {
+        $user = User::factory()->create([
+            'activity_level' => 'Moderately active',
+            'weight' => 70,
+            'gender' => 'Female',
+            'goal' => 'Maintain weight',
+        ]);
+
+        Cache::store('file')->flush();
+        $this->fakeOpenMeteo(temp: 28.0, weatherCode: 0, aqi: 45);
+
+        $this->actingAs($user)
+            ->getJson('/api/dashboard?lat=6.688&lon=-1.624')
+            ->assertOk()
+            ->assertJsonPath('airQuality.aqi', 45)
+            ->assertJsonPath('alertTitle', 'No Alerts');
+    }
+
+    public function test_dashboard_poor_us_aqi_triggers_air_quality_alert(): void
+    {
+        $user = User::factory()->create([
+            'activity_level' => 'Moderately active',
+            'weight' => 70,
+            'gender' => 'Female',
+            'goal' => 'Maintain weight',
+        ]);
+
+        Cache::store('file')->flush();
+        $this->fakeOpenMeteo(temp: 28.0, weatherCode: 0, aqi: 120);
+
+        $this->actingAs($user)
+            ->getJson('/api/dashboard?lat=9.403&lon=-0.842')
+            ->assertOk()
+            ->assertJsonPath('airQuality.aqi', 120)
+            ->assertJsonPath('alertTitle', 'Air Quality Alert');
+    }
+
+    public function test_dashboard_without_coords_does_not_invent_local_weather(): void
+    {
+        $user = User::factory()->create([
+            'activity_level' => 'Moderately active',
+            'weight' => 70,
+            'gender' => 'Female',
+            'goal' => 'Maintain weight',
+        ]);
+
+        $this->fakeOpenMeteo(temp: 31.0, weatherCode: 51, aqi: 120);
+
+        $response = $this->actingAs($user)->getJson('/api/dashboard');
+
+        $response->assertOk()
+            ->assertJsonPath('weather.main', null)
+            ->assertJsonPath('weather.description', null)
+            ->assertJsonPath('alertTitle', 'No Alerts');
     }
 }

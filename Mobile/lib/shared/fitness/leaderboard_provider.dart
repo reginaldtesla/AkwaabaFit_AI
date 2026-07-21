@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -313,8 +314,8 @@ final leaderboardProvider =
   final dio = Dio(
     BaseOptions(
       baseUrl: base,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 3),
+      receiveTimeout: const Duration(seconds: 5),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -327,22 +328,23 @@ final leaderboardProvider =
   final currentUserIdRaw = localProfile?['id'] ?? localProfile?['user_id'];
   final currentUserId = currentUserIdRaw?.toString();
 
-  // Push local steps first so the board + /me see today's count.
-  try {
-    await StepsOfflineRecorder.flushTodayStepsForLeaderboard();
-  } catch (_) {}
+  // Push steps in the background — do not block opening the board on sync latency.
+  // notifyRefresh: false avoids a second full reload mid-fetch.
+  unawaited(
+    StepsOfflineRecorder.flushTodayStepsForLeaderboard(notifyRefresh: false),
+  );
 
-  Map<String, dynamic>? me;
-  try {
-    final meResp = await dio.get(
-      'leaderboard/daily/me',
-      queryParameters: {'period': _periodQuery(period)},
-    );
-    if (meResp.data is Map) {
-      me = (meResp.data as Map).map((k, v) => MapEntry(k.toString(), v));
-    }
-  } catch (_) {
-    me = null;
+  Future<Map<String, dynamic>?> fetchMe() async {
+    try {
+      final meResp = await dio.get(
+        'leaderboard/daily/me',
+        queryParameters: {'period': _periodQuery(period)},
+      );
+      if (meResp.data is Map) {
+        return (meResp.data as Map).map((k, v) => MapEntry(k.toString(), v));
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<Map<String, dynamic>> fetchBoard() async {
@@ -372,7 +374,12 @@ final leaderboardProvider =
   }
 
   try {
-    final json = await fetchBoard();
+    final results = await Future.wait<Object?>([
+      fetchMe(),
+      fetchBoard(),
+    ]);
+    final me = results[0] as Map<String, dynamic>?;
+    final json = results[1]! as Map<String, dynamic>;
     final list = coerceLeaderboardRowMaps(json);
     final users = await _usersFromApiMaps(
       list: list,

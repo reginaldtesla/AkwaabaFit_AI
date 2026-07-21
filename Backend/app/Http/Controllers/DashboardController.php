@@ -7,6 +7,7 @@ use App\Models\MealLog;
 use App\Models\WaterLog;
 use App\Services\DietitianAdviceService;
 use App\Services\OpenMeteoService;
+use App\Support\AirQualityThresholds;
 use App\Support\HealthProfileOptions;
 use App\Support\WeatherCoordinates;
 use Illuminate\Http\JsonResponse;
@@ -348,9 +349,12 @@ class DashboardController extends Controller
         ?string $weatherDescription,
     ): array {
         $isHighHeat = $tempCelsius >= 32.0;
-        $isPoorAir = $airQualityAqi !== null && $airQualityAqi >= 4; // 4/5 = poor/very poor
+        $isPoorAir = AirQualityThresholds::isPoorUsAqi($airQualityAqi);
         $desc = strtolower((string) ($weatherDescription ?? ''));
-        $isDusty = str_contains($desc, 'dust') || str_contains($desc, 'sand') || str_contains($desc, 'haze');
+        $isDusty = str_contains($desc, 'dust')
+            || str_contains($desc, 'sand')
+            || str_contains($desc, 'haze')
+            || (str_contains($desc, 'smoke') && ! str_contains($desc, 'fog'));
 
         if ($isPoorAir || $isDusty) {
             $pmText = [];

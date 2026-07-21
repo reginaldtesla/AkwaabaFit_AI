@@ -318,24 +318,23 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
   }
 
   try {
-    // Use cached coords — never block on live GPS for the API call.
-    double lat = 5.6035;
-    double lon = -0.1869;
+    // Cached GPS weather only — never invent Accra as the user's location.
+    final query = <String, String>{};
     try {
       final weatherCache = await db.getWeatherCache();
-      if (weatherCache != null &&
-          weatherCache['latitude'] != null &&
-          weatherCache['longitude'] != null) {
-        lat = (weatherCache['latitude'] as num).toDouble();
-        lon = (weatherCache['longitude'] as num).toDouble();
+      if (weatherCache != null) {
+        final lat = (weatherCache['latitude'] as num?)?.toDouble();
+        final lon = (weatherCache['longitude'] as num?)?.toDouble();
+        final main = weatherCache['weatherMain']?.toString().trim();
+        if (lat != null && lon != null && main != null && main.isNotEmpty) {
+          query['lat'] = lat.toStringAsFixed(5);
+          query['lon'] = lon.toStringAsFixed(5);
+        }
       }
     } catch (_) {}
     final response = await dio.get(
       '/activity/today',
-      queryParameters: {
-        'lat': lat.toStringAsFixed(5),
-        'lon': lon.toStringAsFixed(5),
-      },
+      queryParameters: query.isEmpty ? null : query,
     );
     final raw = response.data;
     if (raw is! Map) {
@@ -739,15 +738,18 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
           ),
           data: (data) {
             final liveSteps = stepsTodayAsync.valueOrNull;
+            final displaySteps = liveSteps == null
+                ? data.stepsToday
+                : (liveSteps > data.stepsToday ? liveSteps : data.stepsToday);
             final merged = liveSteps == null
                 ? data
                 : data.copyWith(
-                    stepsToday: liveSteps,
+                    stepsToday: displaySteps,
                     stepGoal: (localStepGoal != null && localStepGoal > 0)
                         ? localStepGoal
                         : data.stepGoal,
-                    calories: _kcalBurnedFromSteps(liveSteps),
-                    distanceKm: _distanceKmFromSteps(liveSteps),
+                    calories: _kcalBurnedFromSteps(displaySteps),
+                    distanceKm: _distanceKmFromSteps(displaySteps),
                   );
 
             return RefreshIndicator(

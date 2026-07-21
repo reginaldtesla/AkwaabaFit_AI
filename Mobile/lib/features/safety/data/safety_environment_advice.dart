@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/shared/weather/air_quality_thresholds.dart';
 
 /// Friendly environment copy + quick tips for Safety Hub, driven by dashboard weather.
 class SafetyEnvironmentAdvice {
@@ -23,6 +24,22 @@ class SafetyEnvironmentAdvice {
   final String tipBLabel;
 }
 
+/// Human label for the live weather condition (null when unknown / untrusted).
+String? safetyWeatherConditionLabel({
+  String? weatherMain,
+  String? weatherDescription,
+}) {
+  final desc = weatherDescription?.trim();
+  if (desc != null && desc.isNotEmpty) {
+    return desc;
+  }
+  final main = weatherMain?.trim();
+  if (main != null && main.isNotEmpty) {
+    return main;
+  }
+  return null;
+}
+
 SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
   required double tempCelsius,
   String? weatherMain,
@@ -31,7 +48,22 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
 }) {
   final t = tempCelsius;
   final mainNorm = weatherMain?.trim().toLowerCase() ?? '';
-  final poorAir = airQualityAqi != null && airQualityAqi >= 4;
+  final poorAir = AirQualityThresholds.isPoorUsAqi(airQualityAqi);
+  final hasCondition = mainNorm.isNotEmpty;
+
+  if (!hasCondition && t <= 0) {
+    return SafetyEnvironmentAdvice(
+      headlineLabel: 'Weather unavailable',
+      headlineIcon: Icons.cloud_off_outlined,
+      headlineColor: Colors.blueGrey,
+      quote:
+          '"Turn on location to load your real local conditions. Until then, we will not guess the weather for you."',
+      tipAIcon: Icons.my_location_outlined,
+      tipALabel: 'Enable location',
+      tipBIcon: Icons.directions_walk,
+      tipBLabel: 'Keep moving',
+    );
+  }
 
   if (mainNorm == 'thunderstorm') {
     return SafetyEnvironmentAdvice(
@@ -82,8 +114,6 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
     'smoke',
     'ash',
     'haze',
-    'mist',
-    'fog',
   }.contains(mainNorm);
 
   if (poorAir || dustyAir) {
@@ -116,7 +146,7 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
     );
   }
 
-  // Clear or unknown — lean on temperature.
+  // Clear or unknown — lean on temperature when we have a real reading.
   if (t >= 32 || (mainNorm == 'clear' && t >= 30)) {
     return SafetyEnvironmentAdvice(
       headlineLabel: 'Sunny & warm',
@@ -159,15 +189,29 @@ SafetyEnvironmentAdvice resolveSafetyEnvironmentAdvice({
     );
   }
 
+  if (t > 0) {
+    return SafetyEnvironmentAdvice(
+      headlineLabel: 'Cool air',
+      headlineIcon: Icons.ac_unit_outlined,
+      headlineColor: Colors.blueGrey.shade700,
+      quote:
+          '"Cooler day—warm layers, comfy socks, and shorter trips outside if you chill easily."',
+      tipAIcon: Icons.dry_cleaning_outlined,
+      tipALabel: 'Warm layers',
+      tipBIcon: Icons.home_outlined,
+      tipBLabel: 'Warm up indoors',
+    );
+  }
+
   return SafetyEnvironmentAdvice(
-    headlineLabel: 'Cool air',
-    headlineIcon: Icons.ac_unit_outlined,
-    headlineColor: Colors.blueGrey.shade700,
+    headlineLabel: 'Weather unavailable',
+    headlineIcon: Icons.cloud_off_outlined,
+    headlineColor: Colors.blueGrey,
     quote:
-        '"Cooler day—warm layers, comfy socks, and shorter trips outside if you chill easily."',
-    tipAIcon: Icons.dry_cleaning_outlined,
-    tipALabel: 'Warm layers',
-    tipBIcon: Icons.home_outlined,
-    tipBLabel: 'Warm up indoors',
+        '"Turn on location to load your real local conditions. Until then, we will not guess the weather for you."',
+    tipAIcon: Icons.my_location_outlined,
+    tipALabel: 'Enable location',
+    tipBIcon: Icons.directions_walk,
+    tipBLabel: 'Keep moving',
   );
 }

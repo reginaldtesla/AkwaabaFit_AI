@@ -76,7 +76,22 @@ class DeviceWeatherService {
             ? deviceWeatherLocationUnavailableLabel
             : null,
       );
-      if (snap != null && !coords.isFallback) {
+      // Never cache or surface Accra-default conditions as the user's local weather.
+      if (coords.isFallback) {
+        return DeviceWeatherSnapshot(
+          latitude: coords.lat,
+          longitude: coords.lon,
+          tempCelsius: 0,
+          location: deviceWeatherLocationUnavailableLabel,
+          weatherMain: null,
+          weatherDescription: null,
+          airQualityAqi: null,
+          pm25: null,
+          pm10: null,
+          fetchedAt: DateTime.now(),
+        );
+      }
+      if (snap != null) {
         await db.putWeatherCache(snap.toJson());
       }
       return snap;

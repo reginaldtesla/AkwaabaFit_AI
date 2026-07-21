@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'package:mobile/shared/weather/air_quality_thresholds.dart';
+
 /// Weather-aware copy for Stride (steps) — rain does not block progress.
 abstract final class StrideWeatherGuidance {
   static bool isHighHeat(double tempCelsius) => tempCelsius >= 32.0;
 
-  static bool isPoorAir(int? aqi) => aqi != null && aqi >= 4;
+  static bool isPoorAir(int? aqi) => AirQualityThresholds.isPoorUsAqi(aqi);
 
   static IconData iconFor(String? weatherMain) {
     final m = weatherMain?.trim().toLowerCase() ?? '';

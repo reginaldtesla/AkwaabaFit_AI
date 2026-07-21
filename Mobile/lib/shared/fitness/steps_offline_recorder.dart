@@ -108,7 +108,12 @@ class StepsOfflineRecorder {
 
   /// Force-sync today's steps to the server (ignores the normal 2‑minute throttle).
   /// Needed so opted-in users appear on the leaderboard without waiting.
-  static Future<bool> flushTodayStepsForLeaderboard() async {
+  ///
+  /// Pass [notifyRefresh]: false when the leaderboard itself is already loading,
+  /// so a successful sync does not kick off a second full reload.
+  static Future<bool> flushTodayStepsForLeaderboard({
+    bool notifyRefresh = true,
+  }) async {
     final db = await SqliteOfflineDb.getInstance();
     final today = DateTime.now().toIso8601String().substring(0, 10);
     const storage = FlutterSecureStorage();
@@ -136,8 +141,8 @@ class StepsOfflineRecorder {
       final dio = Dio(
         BaseOptions(
           baseUrl: AppConfig.apiBaseUrl,
-          connectTimeout: const Duration(seconds: 8),
-          receiveTimeout: const Duration(seconds: 8),
+          connectTimeout: const Duration(seconds: 3),
+          receiveTimeout: const Duration(seconds: 5),
           headers: {
             'Accept': 'application/json',
             'Authorization': 'Bearer $token',
@@ -149,7 +154,9 @@ class StepsOfflineRecorder {
         'log_date': today,
       });
       _lastDirectPostAt = DateTime.now();
-      LeaderboardRefreshBus.notify();
+      if (notifyRefresh) {
+        LeaderboardRefreshBus.notify();
+      }
       return true;
     } catch (_) {
       await db.enqueueOutbox(type: 'steps_sync', payload: {

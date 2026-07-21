@@ -2,6 +2,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Matches [stepsTodayProvider]: today's steps = cumulative sensor total minus
 /// the baseline stored under `steps_baseline_<yyyy-mm-dd>`.
+///
+/// Android `TYPE_STEP_COUNTER` / iOS pedometer totals are since last reboot.
+/// After a reboot the counter restarts near 0 while a stored baseline can still
+/// be large — that must reset the baseline or today stays stuck at 0.
 final class TodayStepsFromSensor {
   TodayStepsFromSensor({FlutterSecureStorage? storage})
       : _storage = storage ?? const FlutterSecureStorage();
@@ -34,12 +38,20 @@ final class TodayStepsFromSensor {
     await _ensureSessionForClock(now);
     final key = _dayKey(now);
 
+    // Reboot / sensor reset: cumulative total dropped below the stored baseline.
+    if (baseline != null && sensorTotal < baseline!) {
+      baseline = sensorTotal;
+      await _storage.write(key: key, value: baseline.toString());
+      _hadStoredBaselineAtSessionStart = true;
+    }
+
     final beforeBaseline = baseline;
     baseline ??= sensorTotal;
     if (_hadStoredBaselineAtSessionStart != true && beforeBaseline == null) {
       await _storage.write(key: key, value: baseline.toString());
     }
 
+    // Mid-session drop (some OEMs reset the counter without a full reboot).
     if (lastTotal != null && sensorTotal < lastTotal!) {
       baseline = sensorTotal;
       await _storage.write(key: key, value: baseline.toString());

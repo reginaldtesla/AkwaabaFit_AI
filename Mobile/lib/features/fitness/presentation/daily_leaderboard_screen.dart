@@ -44,6 +44,7 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
 
   late Timer _timer;
   StreamSubscription<void>? _refreshSub;
+  Timer? _refreshDebounce;
   Duration _timeLeft = Duration.zero;
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _meRowKey = GlobalKey();
@@ -63,6 +64,14 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
     ref.invalidate(leaderboardProvider);
   }
 
+  void _scheduleLeaderboardRefresh() {
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _bumpLeaderboardRefresh();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -72,7 +81,7 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
     _timeLeft = _untilEndOfPeriod(ref.read(leaderboardPeriodProvider));
     _refreshSub = LeaderboardRefreshBus.stream.listen((_) {
       if (!mounted) return;
-      _bumpLeaderboardRefresh();
+      _scheduleLeaderboardRefresh();
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -98,6 +107,7 @@ class _DailyLeaderboardScreenState extends ConsumerState<DailyLeaderboardScreen>
   @override
   void dispose() {
     _timer.cancel();
+    _refreshDebounce?.cancel();
     _refreshSub?.cancel();
     _scrollController.dispose();
     super.dispose();

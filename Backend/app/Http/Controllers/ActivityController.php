@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DailyStepLog;
 use App\Models\HourlyStepLog;
 use App\Services\OpenMeteoService;
+use App\Support\AirQualityThresholds;
 use App\Support\LeaderboardCache;
 use App\Support\WeatherCoordinates;
 use Illuminate\Http\JsonResponse;
@@ -220,7 +221,7 @@ class ActivityController extends Controller
         if (in_array($main, ['rain', 'drizzle'], true)) {
             return 'Rain today — skip the outdoor walk if you prefer. Pace at home or use stairs; steps still count.';
         }
-        if ($airQualityAqi !== null && $airQualityAqi >= 4) {
+        if (AirQualityThresholds::isPoorUsAqi($airQualityAqi)) {
             return 'Poor air quality — keep workouts indoors and at an easy pace.';
         }
         if ($tempCelsius >= 32.0) {

@@ -363,6 +363,16 @@ class HealthSafetyHubScreen extends ConsumerWidget {
       airQualityAqi: dashSnapshot?.airQualityAqi,
     );
     final weatherBanner = _weatherBannerLook(dashSnapshot?.weatherMain);
+    final conditionLabel = safetyWeatherConditionLabel(
+      weatherMain: dashSnapshot?.weatherMain,
+      weatherDescription: dashSnapshot?.weatherDescription,
+    );
+    final hasTrustedTemp = (dashSnapshot?.tempCelsius ??
+            data.temperatureCelsius.toDouble()) >
+        0;
+    final showTemp = hasTrustedTemp &&
+        (dashSnapshot?.weatherMain != null ||
+            (dashSnapshot?.tempCelsius ?? 0) > 0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -437,14 +447,35 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                                 letterSpacing: 1.0,
                               ),
                             ),
-                            Text(
-                              '$tempDisplay°C',
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 32,
-                                fontWeight: FontWeight.w900,
-                                color: textMain,
+                            if (showTemp)
+                              Text(
+                                '$tempDisplay°C',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w900,
+                                  color: textMain,
+                                ),
+                              )
+                            else
+                              Text(
+                                '—',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w900,
+                                  color: textMain,
+                                ),
                               ),
-                            ),
+                            if (conditionLabel != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                conditionLabel,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: textLight,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

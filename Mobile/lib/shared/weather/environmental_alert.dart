@@ -1,3 +1,5 @@
+import 'package:mobile/shared/weather/air_quality_thresholds.dart';
+
 /// Dashboard-style environmental alerts (mirrors Laravel `buildEnvironmentalAlert`).
 class EnvironmentalAlert {
   const EnvironmentalAlert({required this.title, required this.message});
@@ -14,12 +16,12 @@ class EnvironmentalAlert {
     String? weatherDescription,
   }) {
     final isHighHeat = tempCelsius >= 32.0;
-    final isPoorAir = airQualityAqi != null && airQualityAqi >= 4;
+    final isPoorAir = AirQualityThresholds.isPoorUsAqi(airQualityAqi);
     final desc = (weatherDescription ?? '').toLowerCase();
     final isDusty = desc.contains('dust') ||
         desc.contains('sand') ||
         desc.contains('haze') ||
-        desc.contains('fog');
+        (desc.contains('smoke') && !desc.contains('fog'));
 
     if (isPoorAir || isDusty) {
       final pmParts = <String>[];

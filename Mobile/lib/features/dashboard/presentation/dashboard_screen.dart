@@ -32,9 +32,10 @@ import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/fitness/stride_weather_guidance.dart';
-import 'package:mobile/shared/ui/user_friendly_errors.dart';
+import 'package:mobile/shared/weather/air_quality_thresholds.dart';
 import 'package:mobile/shared/weather/dashboard_weather_merge.dart';
 import 'package:mobile/shared/weather/device_weather_service.dart';
+import 'package:mobile/shared/ui/user_friendly_errors.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT (RIVERPOD DATA MODELS)
@@ -770,22 +771,22 @@ Map<String, String> _dashboardLocalDayQueryParams() {
 Future<Map<String, String>> _dashboardApiQueryParams(Ref ref) async {
   final params = _dashboardLocalDayQueryParams();
   try {
-    // Use cached weather coordinates if available — never block on live GPS.
+    // Cached GPS weather only — Accra is never invented as a default here.
     final db = await SqliteOfflineDb.getInstance();
     final cached = await db.getWeatherCache();
     if (cached != null) {
-      final lat = cached['latitude'];
-      final lon = cached['longitude'];
-      if (lat != null && lon != null) {
+      final lat = (cached['latitude'] as num?)?.toDouble();
+      final lon = (cached['longitude'] as num?)?.toDouble();
+      final main = cached['weatherMain']?.toString().trim();
+      if (lat != null && lon != null && main != null && main.isNotEmpty) {
         return {
           ...params,
-          'lat': (lat as num).toDouble().toStringAsFixed(5),
-          'lon': (lon as num).toDouble().toStringAsFixed(5),
+          'lat': lat.toStringAsFixed(5),
+          'lon': lon.toStringAsFixed(5),
         };
       }
     }
-    // Fallback: Accra, Ghana default coords (non-blocking).
-    return {...params, 'lat': '5.60350', 'lon': '-0.18690'};
+    return params;
   } catch (_) {
     return params;
   }
@@ -1032,7 +1033,9 @@ class DashboardScreen extends ConsumerWidget {
     final liveSteps = stepsTodayAsync.valueOrNull;
     final merged = applyDeviceWeatherToDashboard(
       data.copyWith(
-        currentSteps: liveSteps ?? data.currentSteps,
+        currentSteps: liveSteps == null
+            ? data.currentSteps
+            : (liveSteps > data.currentSteps ? liveSteps : data.currentSteps),
         stepGoal: _effectiveDashboardStepGoal(data, localStepGoal),
         dailyCaloriesTarget:
             _effectiveDashboardDailyCalories(data, localDailyKcal),
@@ -1562,7 +1565,7 @@ class DashboardScreen extends ConsumerWidget {
 
   Widget _buildWeatherStepsCard(DashboardData data) {
     final bool isHighHeat = data.tempCelsius >= 32.0;
-    final bool isPoorAir = (data.airQualityAqi ?? 0) >= 4;
+    final bool isPoorAir = AirQualityThresholds.isPoorUsAqi(data.airQualityAqi);
     final bool isRainy =
         StrideWeatherGuidance.discouragesOutdoorWalk(data.weatherMain);
     final stepGoal = data.stepGoal <= 0 ? 1 : data.stepGoal;
