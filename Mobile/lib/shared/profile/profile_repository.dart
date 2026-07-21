@@ -145,6 +145,55 @@ class ProfileRepository {
       return null;
     }
   }
+
+  /// Persist leaderboard visibility immediately (not blocked by a stuck outbox).
+  /// Returns false only when online but the server rejected/failed the update.
+  Future<bool> setPublicOnLeaderboard(bool enabled) async {
+    final db = await _db;
+    final existing = await db.getProfileCache();
+    final merged = <String, dynamic>{
+      ...(existing ?? const <String, dynamic>{}),
+      'is_public_on_leaderboard': enabled,
+    };
+    await db.putProfileCache(merged);
+
+    final token = await _storage.read(key: 'sanctum_token');
+    if (token == null || token.isEmpty) return false;
+
+    if (!await _isOnline()) {
+      await db.enqueueOutbox(
+        type: 'profile_patch',
+        payload: {'is_public_on_leaderboard': enabled},
+      );
+      return true;
+    }
+
+    try {
+      final resp = await _dio.patch(
+        '/profile',
+        data: {'is_public_on_leaderboard': enabled},
+        options: Options(
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      final user = (resp.data is Map) ? resp.data['user'] : null;
+      if (user is Map) {
+        await db.putProfileCache(
+          user.map((k, dynamic v) => MapEntry(k.toString(), v)),
+        );
+      }
+      return true;
+    } catch (_) {
+      await db.enqueueOutbox(
+        type: 'profile_patch',
+        payload: {'is_public_on_leaderboard': enabled},
+      );
+      return false;
+    }
+  }
 }
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {

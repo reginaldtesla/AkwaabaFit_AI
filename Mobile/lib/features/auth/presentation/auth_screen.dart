@@ -7,8 +7,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'forgot_password_screen.dart';
 import 'health_profile_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/shared/auth/sanctum_token_storage.dart';
 import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
+import 'package:mobile/shared/nutrition/nutrition_repository.dart';
+import 'package:mobile/shared/hydration/hydration_service.dart';
+import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 import 'package:mobile/shared/ui/app_brand_logo.dart';
 import 'package:mobile/shared/config/app_config.dart';
@@ -106,7 +110,11 @@ class AuthNotifier extends AsyncNotifier<void> {
       final userRaw = response.data['user'];
       final newId = userRaw is Map ? userRaw['id']?.toString() : null;
       if (newId != null && newId.isNotEmpty) {
+        // Wipes only when a *different* account signs in on this phone.
         await OfflineSessionCleanup.onAuthenticatedUserId(newId);
+      } else {
+        // Cannot scope caches without a user id — clear to avoid cross-account bleed.
+        await OfflineSessionCleanup.wipeDeviceCachesForAccountSwitch();
       }
 
       var profileCompleted = false;
@@ -120,6 +128,12 @@ class AuthNotifier extends AsyncNotifier<void> {
           );
         } catch (_) {}
       }
+
+      // Server is source of truth: refill this account's meal history into SQLite.
+      try {
+        await ref.read(nutritionRepositoryProvider).rehydrateHistory();
+      } catch (_) {}
+      ref.invalidate(nutritionHistoryProvider);
 
       state = const AsyncValue.data(null);
       return AuthSuccess(profileCompleted: profileCompleted);
@@ -181,6 +195,18 @@ class AuthNotifier extends AsyncNotifier<void> {
 
   /// Revokes Sanctum tokens on the server (best-effort) and clears local storage.
   Future<void> signOut() async {
+    // Push pending meals (and other offline writes) while the token still works.
+    // Local SQLite is wiped next — anything not on the server would be lost.
+    try {
+      await ref.read(nutritionRepositoryProvider).syncPendingIfAny();
+    } catch (_) {}
+    try {
+      await ref.read(hydrationServiceProvider).syncPendingIfAny();
+    } catch (_) {}
+    try {
+      await ref.read(profileRepositoryProvider).syncPendingIfAny();
+    } catch (_) {}
+
     final token = await readSanctumToken(storage: _storage);
     if (token != null && token.toString().trim().isNotEmpty) {
       try {
@@ -270,6 +296,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (result != null) {
       ref.invalidate(sanctumTokenReadyProvider);
       ref.invalidate(dashboardDataProvider);
+      ref.invalidate(nutritionHistoryProvider);
 
       final destination = result.profileCompleted
           ? const DashboardScreen()

@@ -134,8 +134,9 @@ class SqliteOfflineSyncService {
         }
       } catch (_) {
         await db.markOutboxFailed(id);
-        // Stop to avoid battery/network burn when server is failing.
-        return;
+        // Continue remaining jobs — a failed steps sync must not block
+        // profile / nutrition patches (e.g. leaderboard opt-in).
+        continue;
       }
     }
   }

@@ -6,6 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Offline SQLite caches are shared across accounts on one phone (no user_id column).
 /// Wipe them on logout and whenever a different server user signs in.
+///
+/// Meal history for an account lives on the server (`meal_logs`). Before wipe,
+/// the app syncs pending nutrition logs so logout/login can rehydrate history
+/// for that user via `GET /nutrition/history`. A different account on the same
+/// phone gets an empty local cache, then loads *their* meals from the API.
 class OfflineSessionCleanup {
   OfflineSessionCleanup._();
 

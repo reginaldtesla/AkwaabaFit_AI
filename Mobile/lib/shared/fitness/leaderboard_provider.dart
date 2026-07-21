@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
 import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
+import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 
@@ -325,6 +326,11 @@ final leaderboardProvider =
       await ref.read(profileRepositoryProvider).readLocalProfile();
   final currentUserIdRaw = localProfile?['id'] ?? localProfile?['user_id'];
   final currentUserId = currentUserIdRaw?.toString();
+
+  // Push local steps first so the board + /me see today's count.
+  try {
+    await StepsOfflineRecorder.flushTodayStepsForLeaderboard();
+  } catch (_) {}
 
   Map<String, dynamic>? me;
   try {

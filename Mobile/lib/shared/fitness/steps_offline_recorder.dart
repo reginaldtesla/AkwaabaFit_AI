@@ -105,4 +105,58 @@ class StepsOfflineRecorder {
       await db.replacePendingActivityHourlyOutbox({'step_count': steps});
     }
   }
+
+  /// Force-sync today's steps to the server (ignores the normal 2‑minute throttle).
+  /// Needed so opted-in users appear on the leaderboard without waiting.
+  static Future<bool> flushTodayStepsForLeaderboard() async {
+    final db = await SqliteOfflineDb.getInstance();
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    const storage = FlutterSecureStorage();
+    final token = await storage.read(key: 'sanctum_token');
+    if (token == null || token.isEmpty) return false;
+
+    final connectivity = Connectivity();
+    final results = await connectivity.checkConnectivity();
+    final online = results.contains(ConnectivityResult.wifi) ||
+        results.contains(ConnectivityResult.mobile) ||
+        results.contains(ConnectivityResult.ethernet);
+    if (!online) return false;
+
+    var steps = await db.getStepsLocalForDate(today) ?? 0;
+    if (steps <= 0) {
+      steps = int.tryParse(await storage.read(key: _lastStepCountKey) ?? '') ?? 0;
+      final lastDate = await storage.read(key: _lastStepDateKey);
+      if (lastDate != today) {
+        steps = 0;
+      }
+    }
+    if (steps <= 0) return false;
+
+    try {
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: AppConfig.apiBaseUrl,
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ),
+      );
+      await dio.post('/steps/sync', data: {
+        'step_count': steps,
+        'log_date': today,
+      });
+      _lastDirectPostAt = DateTime.now();
+      LeaderboardRefreshBus.notify();
+      return true;
+    } catch (_) {
+      await db.enqueueOutbox(type: 'steps_sync', payload: {
+        'log_date': today,
+        'step_count': steps,
+      });
+      return false;
+    }
+  }
 }

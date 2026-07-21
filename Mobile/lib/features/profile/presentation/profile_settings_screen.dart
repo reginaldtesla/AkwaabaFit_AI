@@ -15,6 +15,8 @@ import 'package:mobile/features/profile/presentation/accountability_partner_scre
 import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
 import 'package:mobile/shared/fitness/leaderboard_provider.dart';
+import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
+import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/config/app_config.dart';
@@ -707,19 +709,23 @@ class ProfileSettingsScreen extends ConsumerWidget {
                     activeThumbColor: primary,
                     onChanged: (value) async {
                       final repo = ref.read(profileRepositoryProvider);
-                      await repo.saveAndSync({
-                        'is_public_on_leaderboard': value,
-                      });
+                      final synced = await repo.setPublicOnLeaderboard(value);
+                      if (value) {
+                        await StepsOfflineRecorder.flushTodayStepsForLeaderboard();
+                      }
                       await clearLeaderboardOfflineCache();
                       ref.invalidate(publicLeaderboardProvider);
                       ref.invalidate(leaderboardProvider);
+                      LeaderboardRefreshBus.notify();
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            value
-                                ? 'You joined the public leaderboard'
-                                : 'You left the public leaderboard',
+                            !synced
+                                ? 'Saved on this device — will sync when you\'re back online'
+                                : value
+                                    ? 'You joined the public leaderboard'
+                                    : 'You left the public leaderboard',
                           ),
                         ),
                       );

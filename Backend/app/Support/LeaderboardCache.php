@@ -8,8 +8,15 @@ final class LeaderboardCache
 {
     public static function forgetCurrent(): void
     {
-        Cache::forget(self::dailyKey(now()->toDateString()));
+        // Clear a 3-day window so device timezone ≠ server timezone does not
+        // leave a stale board after opt-in / step sync.
+        foreach ([-1, 0, 1] as $offset) {
+            $day = now()->copy()->addDays($offset)->toDateString();
+            Cache::forget(self::dailyKey($day));
+        }
+
         Cache::forget(self::monthlyKey(now()->format('Y-m')));
+        Cache::forget(self::monthlyKey(now()->copy()->subMonthNoOverflow()->format('Y-m')));
     }
 
     public static function dailyKey(string $date): string

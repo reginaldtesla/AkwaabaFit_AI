@@ -26,6 +26,12 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
   bool _busy = false;
   bool _fromCache = false;
 
+  static const Color _ink = Color(0xFF0F172A);
+  static const Color _forest = Color(0xFF1A5D1A);
+  static const Color _muted = Color(0xFF64748B);
+  static const Color _water = Color(0xFF3B82A0);
+  static const Color _waterSoft = Color(0xFFEEF6F8);
+
   @override
   void initState() {
     super.initState();
@@ -95,36 +101,48 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
 
   @override
   Widget build(BuildContext context) {
-    const green = Color(0xFF1A5D1A);
     final progress = _goalMl > 0 ? (_totalMl / _goalMl).clamp(0.0, 1.0) : 0.0;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: _waterSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _water.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.water_drop_outlined, color: Colors.blue.shade600),
+              Icon(Icons.water_drop_outlined, size: 18, color: _water),
               const SizedBox(width: 8),
-              Text(
-                'Water today',
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
+              Expanded(
+                child: Text(
+                  'Water',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _muted,
+                  ),
                 ),
               ),
-              const Spacer(),
               Text(
-                '${(_totalMl / 1000).toStringAsFixed(1)} / ${(_goalMl / 1000).toStringAsFixed(1)} L',
+                (_totalMl / 1000).toStringAsFixed(1),
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              Text(
+                ' / ${(_goalMl / 1000).toStringAsFixed(1)} L',
                 style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: Colors.blueGrey.shade600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _muted,
                 ),
               ),
             ],
@@ -134,29 +152,43 @@ class _WaterTrackerCardState extends ConsumerState<WaterTrackerCard> {
             Text(
               'Saved on this device — syncs when you\'re back online',
               style: GoogleFonts.inter(
-                fontSize: 11,
-                color: Colors.blueGrey.shade500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: _muted,
               ),
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress,
-              minHeight: 8,
-              backgroundColor: Colors.blue.shade50,
-              color: Colors.blue.shade400,
+              minHeight: 6,
+              backgroundColor: Colors.white.withValues(alpha: 0.9),
+              color: _water,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
+            child: OutlinedButton(
               onPressed: _busy ? null : _addGlass,
-              icon: const Icon(Icons.add),
-              label: const Text('Add glass (250 ml)'),
-              style: OutlinedButton.styleFrom(foregroundColor: green),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _forest,
+                side: BorderSide(color: _forest.withValues(alpha: 0.35)),
+                backgroundColor: Colors.white.withValues(alpha: 0.7),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                _busy ? 'Adding…' : '+ Add glass (250 ml)',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
         ],

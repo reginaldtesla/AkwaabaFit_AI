@@ -79,6 +79,16 @@ class NutritionRepository {
     await sync.syncOnce();
   }
 
+  /// Pull this account's meals from the server into local cache.
+  /// Call after login so history survives logout (server is source of truth).
+  Future<Map<String, dynamic>> rehydrateHistory({int days = 30}) async {
+    final now = DateTime.now();
+    final from =
+        DateTime(now.year, now.month, now.day).subtract(Duration(days: days));
+    final to = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    return fetchHistory(from: from, to: to);
+  }
+
   Future<Map<String, dynamic>> fetchHistory({
     required DateTime from,
     required DateTime to,

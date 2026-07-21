@@ -74,7 +74,7 @@ final nutritionHistoryProvider = FutureProvider<List<DailyNutrition>>((ref) asyn
     final repo = ref.read(nutritionRepositoryProvider);
     final now = DateTime.now();
     final from =
-        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 14));
+        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 30));
     final to = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
     final data = await repo.fetchHistory(from: from, to: to);
