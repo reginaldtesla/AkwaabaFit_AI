@@ -901,7 +901,7 @@
             <h2>Try AkwaabaFit</h2>
             <p>
               Download the Android beta APK or join the waitlist for updates. API lives at
-              <strong>{{ parse_url(config('app.url'), PHP_URL_HOST) ?: 'api.tesnet.xyz' }}</strong> — Flutter app for physical devices only.
+              <strong>https://api.tesnet.xyz</strong> — Flutter app for physical devices only.
             </p>
             @if ($apkDownloadUrl)
             <p style="margin-top: 1rem;">

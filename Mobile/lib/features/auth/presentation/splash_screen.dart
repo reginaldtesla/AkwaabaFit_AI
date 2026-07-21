@@ -22,7 +22,7 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
   try {
     token = await storage
         .read(key: 'sanctum_token')
-        .timeout(const Duration(seconds: 8), onTimeout: () => null);
+        .timeout(const Duration(seconds: 3), onTimeout: () => null);
   } catch (_) {
     token = null;
   }
@@ -31,13 +31,31 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
     return 'not_authenticated';
   }
 
-  // Check if profile is completed
+  // Fast path: check cached profile completion first so we can navigate
+  // immediately while verifying with the server in background.
+  bool? cachedProfileComplete;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    cachedProfileComplete = prefs.getBool(OfflinePrefsKeys.profileCompleteCached);
+  } catch (_) {}
+
+  // If we have a cached value, use it for instant navigation.
+  // The server call runs but doesn't block navigation.
+  if (cachedProfileComplete != null) {
+    // Fire-and-forget server validation to update the cache for next launch.
+    unawaited(_refreshProfileStatus(token));
+    return cachedProfileComplete
+        ? 'authenticated_profile_complete'
+        : 'authenticated_profile_incomplete';
+  }
+
+  // No cache — must ask the server (first launch after login).
   try {
     final dio = Dio(
       BaseOptions(
         baseUrl: AppConfig.apiBaseUrl,
-        connectTimeout: Duration(seconds: 5),
-        receiveTimeout: Duration(seconds: 5),
+        connectTimeout: const Duration(seconds: 3),
+        receiveTimeout: const Duration(seconds: 4),
       ),
     );
 
@@ -59,17 +77,12 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
       await prefs.setBool(OfflinePrefsKeys.profileCompleteCached, profileCompleted);
     } catch (_) {}
 
-    await Future.delayed(const Duration(milliseconds: 800));
     return profileCompleted
         ? 'authenticated_profile_complete'
         : 'authenticated_profile_incomplete';
   } catch (e) {
-    await Future.delayed(const Duration(milliseconds: 400));
+    // Server unreachable on first login — check local DB as last resort.
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(OfflinePrefsKeys.profileCompleteCached) == true) {
-        return 'authenticated_profile_complete';
-      }
       final local = await SqliteOfflineDb.getInstance().then((db) => db.getProfileCache());
       if (local != null) {
         final h = local['height'];
@@ -82,6 +95,32 @@ final authInitializationProvider = FutureProvider<String>((ref) async {
     return 'authenticated_profile_incomplete';
   }
 });
+
+/// Background refresh of profile_completed flag (fire-and-forget).
+Future<void> _refreshProfileStatus(String token) async {
+  try {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConfig.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 4),
+        receiveTimeout: const Duration(seconds: 5),
+      ),
+    );
+    final response = await dio.get(
+      '/user',
+      options: Options(
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ),
+    );
+    final user = response.data;
+    final profileCompleted = user['profile_completed'] == true;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(OfflinePrefsKeys.profileCompleteCached, profileCompleted);
+  } catch (_) {}
+}
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -107,18 +146,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   bool _showFirstRunWelcome = false;
   String? _pendingAuthStatus;
 
+  /// Minimum time the splash animation is visible.
+  late final Future<void> _minSplashDuration;
+
   @override
   void initState() {
     super.initState();
+    _minSplashDuration = Future.delayed(const Duration(milliseconds: 1500));
+
     _progressController = AnimationController(
       duration: const Duration(seconds: 3),
       vsync: this,
     );
     _progressController?.repeat();
 
-    // listen() in build only runs on *changes* after subscribe — if auth finishes
-    // first we can miss navigation. listenManual + fireImmediately handles the
-    // current AsyncValue and every later transition; error state still advances.
     ref.listenManual<AsyncValue<String>>(
       authInitializationProvider,
       (previous, next) {
@@ -186,9 +227,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     _navigateForAuthStatus(status);
   }
 
-  void _navigateForAuthStatus(String status) {
+  Future<void> _navigateForAuthStatus(String status) async {
     if (_hasNavigated) return;
     _hasNavigated = true;
+
+    // Wait for minimum splash animation before navigating.
+    await _minSplashDuration;
+    if (!mounted) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       switch (status) {
@@ -227,12 +272,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           Positioned(
             top: -80,
             left: -80,
-            child: _buildBlurBlob(forest.withOpacity(0.05), 250, 80),
+            child: _buildBlurBlob(forest.withValues(alpha: 0.05), 250, 80),
           ),
           Positioned(
             bottom: -80,
             right: -80,
-            child: _buildBlurBlob(medicalBlue.withOpacity(0.4), 300, 100),
+            child: _buildBlurBlob(medicalBlue.withValues(alpha: 0.4), 300, 100),
           ),
 
           // 2. Main Content
@@ -297,9 +342,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: forest.withOpacity(0.05),
+                        color: forest.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: forest.withOpacity(0.1)),
+                        border: Border.all(color: forest.withValues(alpha: 0.1)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -337,7 +382,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               width: 64 * _progressController!.value,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: forest.withOpacity(0.5),
+                                color: forest.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),

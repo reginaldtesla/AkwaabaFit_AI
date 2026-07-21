@@ -90,7 +90,7 @@ class _NotificationsSheet extends ConsumerWidget {
                   loading: () => const Center(
                     child: CircularProgressIndicator(color: primary),
                   ),
-                  error: (_, __) => _emptyState('Could not load notifications'),
+                  error: (_, _) => _emptyState('Could not load notifications'),
                   data: (items) {
                     if (items.isEmpty) {
                       return _emptyState('No notifications yet');
@@ -99,7 +99,7 @@ class _NotificationsSheet extends ConsumerWidget {
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                       itemCount: items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
                       itemBuilder: (context, index) =>
                           _NotificationTile(item: items[index]),
                     );

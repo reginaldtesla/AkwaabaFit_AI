@@ -22,7 +22,7 @@ class AppBrandLogo extends StatelessWidget {
       height: size,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
-      errorBuilder: (_, __, ___) => Icon(
+      errorBuilder: (_, _, _) => Icon(
         Icons.restaurant_rounded,
         size: size * 0.55,
         color: const Color(0xFF1A5D1A),

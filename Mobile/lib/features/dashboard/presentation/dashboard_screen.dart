@@ -770,13 +770,22 @@ Map<String, String> _dashboardLocalDayQueryParams() {
 Future<Map<String, String>> _dashboardApiQueryParams(Ref ref) async {
   final params = _dashboardLocalDayQueryParams();
   try {
-    final coords =
-        await ref.read(deviceWeatherServiceProvider).resolveCoordinates();
-    return {
-      ...params,
-      'lat': coords.lat.toStringAsFixed(5),
-      'lon': coords.lon.toStringAsFixed(5),
-    };
+    // Use cached weather coordinates if available — never block on live GPS.
+    final db = await SqliteOfflineDb.getInstance();
+    final cached = await db.getWeatherCache();
+    if (cached != null) {
+      final lat = cached['latitude'];
+      final lon = cached['longitude'];
+      if (lat != null && lon != null) {
+        return {
+          ...params,
+          'lat': (lat as num).toDouble().toStringAsFixed(5),
+          'lon': (lon as num).toDouble().toStringAsFixed(5),
+        };
+      }
+    }
+    // Fallback: Accra, Ghana default coords (non-blocking).
+    return {...params, 'lat': '5.60350', 'lon': '-0.18690'};
   } catch (_) {
     return params;
   }
@@ -1165,7 +1174,7 @@ class DashboardScreen extends ConsumerWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: primary.withOpacity(0.1),
+                  color: primary.withValues(alpha: 0.1),
                   width: 2,
                 ),
                 image: DecorationImage(
@@ -1211,7 +1220,7 @@ class DashboardScreen extends ConsumerWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 8,
                 ),
               ],
@@ -2096,7 +2105,7 @@ class DashboardScreen extends ConsumerWidget {
       border: Border.all(color: Colors.blueGrey.shade50),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.04),
+          color: Colors.black.withValues(alpha: 0.04),
           blurRadius: 12,
           offset: const Offset(0, 4),
         ),

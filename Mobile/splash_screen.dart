@@ -50,12 +50,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           Positioned(
             top: -80,
             left: -80,
-            child: _buildBlurBlob(forest.withOpacity(0.05), 250, 80),
+            child: _buildBlurBlob(forest.withValues(alpha: 0.05), 250, 80),
           ),
           Positioned(
             bottom: -80,
             right: -80,
-            child: _buildBlurBlob(medicalBlue.withOpacity(0.4), 300, 100),
+            child: _buildBlurBlob(medicalBlue.withValues(alpha: 0.4), 300, 100),
           ),
 
           // 2. Main Content
@@ -118,9 +118,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: forest.withOpacity(0.05),
+                          color: forest.withValues(alpha: 0.05),
                           borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: forest.withOpacity(0.1)),
+                          border: Border.all(color: forest.withValues(alpha: 0.1)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -154,7 +154,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                           width: 24, // Represents a loading state
                           height: 4,
                           decoration: BoxDecoration(
-                            color: forest.withOpacity(0.5),
+                            color: forest.withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -206,7 +206,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(
-          colors: [forest.withOpacity(0.05), Colors.transparent],
+          colors: [forest.withValues(alpha: 0.05), Colors.transparent],
           stops: const [0.0, 0.7],
         ),
       ),
@@ -219,7 +219,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             height: 160,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: forest.withOpacity(0.05)),
+              border: Border.all(color: forest.withValues(alpha: 0.05)),
             ),
           ),
           // The main white square box
@@ -229,10 +229,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: forest.withOpacity(0.1)),
+              border: Border.all(color: forest.withValues(alpha: 0.1)),
               boxShadow: [
                 BoxShadow(
-                  color: forest.withOpacity(0.12),
+                  color: forest.withValues(alpha: 0.12),
                   blurRadius: 30,
                   offset: const Offset(0, 8),
                 ),
@@ -244,7 +244,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 Icon(
                   Icons.health_and_safety, // closely matches shield_with_heart
                   size: 56,
-                  color: forest.withOpacity(0.9),
+                  color: forest.withValues(alpha: 0.9),
                 ),
                 Positioned(
                   top: 10,
@@ -258,7 +258,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                     child: Icon(
                       Icons.eco,
                       size: 18,
-                      color: forest.withOpacity(0.8),
+                      color: forest.withValues(alpha: 0.8),
                     ),
                   ),
                 ),

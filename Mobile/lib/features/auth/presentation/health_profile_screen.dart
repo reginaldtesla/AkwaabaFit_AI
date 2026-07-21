@@ -286,7 +286,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
             top: -50,
             right: -50,
             child: _buildBlurBlob(
-              Colors.blue.shade50.withOpacity(0.5),
+              Colors.blue.shade50.withValues(alpha: 0.5),
               300,
               100,
             ),
@@ -295,7 +295,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
             bottom: -50,
             left: -50,
             child: _buildBlurBlob(
-              Colors.green.shade50.withOpacity(0.4),
+              Colors.green.shade50.withValues(alpha: 0.4),
               250,
               80,
             ),
@@ -520,7 +520,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primary.withOpacity(0.5), width: 2),
+              borderSide: BorderSide(color: primary.withValues(alpha: 0.5), width: 2),
             ),
           ),
         ),
@@ -552,7 +552,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
           ),
         ),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           hint: Text(
             hint,
             style: GoogleFonts.inter(color: Colors.blueGrey.shade400),
@@ -583,7 +583,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: primary.withOpacity(0.5), width: 2),
+              borderSide: BorderSide(color: primary.withValues(alpha: 0.5), width: 2),
             ),
           ),
         ),
@@ -629,7 +629,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
               ],
             ),
           ),
-          Switch(value: value, onChanged: onChanged, activeColor: primary),
+          Switch(value: value, onChanged: onChanged, activeThumbColor: primary),
         ],
       ),
     );

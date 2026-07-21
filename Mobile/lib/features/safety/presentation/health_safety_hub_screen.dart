@@ -294,7 +294,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: background.withOpacity(0.8),
+      backgroundColor: background.withValues(alpha: 0.8),
       elevation: 0,
       scrolledUnderElevation: 0,
       title: Text(
@@ -343,7 +343,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 24,
             offset: const Offset(0, 4),
           ),
@@ -357,7 +357,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
             decoration: BoxDecoration(
               color: softTint,
               shape: BoxShape.circle,
-              border: Border.all(color: calmTint.withOpacity(0.5)),
+              border: Border.all(color: calmTint.withValues(alpha: 0.5)),
             ),
             child: const Icon(Icons.spa, color: primary, size: 28),
           ),
@@ -471,7 +471,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                         child: Icon(
                           weatherBanner.icon,
                           size: 152,
-                          color: weatherBanner.iconTint.withOpacity(0.2),
+                          color: weatherBanner.iconTint.withValues(alpha: 0.2),
                         ),
                       ),
                       Positioned(
@@ -513,7 +513,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         color: softTint,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: calmTint.withOpacity(0.35)),
+                        border: Border.all(color: calmTint.withValues(alpha: 0.35)),
                       ),
                       child: Text(
                         advice.quote,
@@ -559,7 +559,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100.withOpacity(0.85),
+        color: Colors.grey.shade100.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade300),
       ),
@@ -588,7 +588,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
       border: Border.all(color: Colors.grey.shade200),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.03),
+          color: Colors.black.withValues(alpha: 0.03),
           blurRadius: 24,
           offset: const Offset(0, 4),
         ),

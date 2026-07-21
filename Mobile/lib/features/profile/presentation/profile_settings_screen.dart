@@ -252,7 +252,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildAppBar(BuildContext context, WidgetRef ref) {
     return AppBar(
-      backgroundColor: Colors.white.withOpacity(0.9),
+      backgroundColor: Colors.white.withValues(alpha: 0.9),
       elevation: 0,
       scrolledUnderElevation: 0,
       bottom: PreferredSize(
@@ -325,7 +325,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                 height: 96,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black.withOpacity(0.05)),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
                   image: DecorationImage(
                     image: NetworkImage(avatarUrl),
                     fit: BoxFit.cover,
@@ -340,7 +340,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -466,7 +466,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
     final stepGoalText = stepGoalAsync.when(
       data: (v) => (v == null || v <= 0) ? 'Tap to set your step goal' : '$v steps daily',
       loading: () => 'Loading...',
-      error: (_, __) => 'Tap to set your step goal',
+      error: (_, _) => 'Tap to set your step goal',
     );
 
     final dailyCalAsync = ref.watch(dailyCaloriesGoalProvider);
@@ -475,7 +475,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
           ? 'Uses calories calculated from your health profile'
           : '$v kcal daily (custom goal)',
       loading: () => 'Loading...',
-      error: (_, __) => 'Tap to set your calorie goal',
+      error: (_, _) => 'Tap to set your calorie goal',
     );
 
     return Padding(
@@ -687,7 +687,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
                     title: Text('Public leaderboard'),
                     subtitle: Text('Loading…'),
                   ),
-                  error: (_, __) => const SizedBox.shrink(),
+                  error: (_, _) => const SizedBox.shrink(),
                   data: (enabled) => SwitchListTile(
                     title: Text(
                       'Public leaderboard',
@@ -894,7 +894,7 @@ class ProfileSettingsScreen extends ConsumerWidget {
       border: Border.all(color: dividerColor),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.02),
+          color: Colors.black.withValues(alpha: 0.02),
           blurRadius: 12,
           offset: const Offset(0, 2),
         ),

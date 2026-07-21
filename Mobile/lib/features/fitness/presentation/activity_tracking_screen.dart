@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
-import 'package:mobile/shared/weather/device_weather_service.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
@@ -274,8 +273,8 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
   final dio = Dio(
     BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 3),
+      receiveTimeout: const Duration(seconds: 5),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -319,13 +318,23 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
   }
 
   try {
-    final coords =
-        await ref.read(deviceWeatherServiceProvider).resolveCoordinates();
+    // Use cached coords — never block on live GPS for the API call.
+    double lat = 5.6035;
+    double lon = -0.1869;
+    try {
+      final weatherCache = await db.getWeatherCache();
+      if (weatherCache != null &&
+          weatherCache['latitude'] != null &&
+          weatherCache['longitude'] != null) {
+        lat = (weatherCache['latitude'] as num).toDouble();
+        lon = (weatherCache['longitude'] as num).toDouble();
+      }
+    } catch (_) {}
     final response = await dio.get(
       '/activity/today',
       queryParameters: {
-        'lat': coords.lat.toStringAsFixed(5),
-        'lon': coords.lon.toStringAsFixed(5),
+        'lat': lat.toStringAsFixed(5),
+        'lon': lon.toStringAsFixed(5),
       },
     );
     final raw = response.data;
@@ -459,7 +468,7 @@ class _PaceSpeedLiveCardState extends ConsumerState<_PaceSpeedLiveCard> {
         border: Border.all(color: Colors.blueGrey.shade50),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -1046,7 +1055,7 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
         border: Border.all(color: Colors.blueGrey.shade50),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
