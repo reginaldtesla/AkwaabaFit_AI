@@ -38,7 +38,10 @@ class LeaderboardOptInVisibilityTest extends TestCase
         $board = $this->actingAs($user)
             ->getJson('/api/leaderboard/daily?period=day&date='.now()->toDateString())
             ->assertOk()
-            ->json('data');
+            ->assertJsonPath('me.opted_in', true)
+            ->assertJsonPath('me.steps', 4200)
+            ->assertJsonPath('me.in_list', true)
+            ->json('entries');
 
         $names = collect($board)->pluck('name')->all();
         $this->assertContains('Fresh Opt In', $names);

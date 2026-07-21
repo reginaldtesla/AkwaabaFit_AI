@@ -112,6 +112,8 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
   String? _mealSourcePreference = 'Mixed';
   String? _activityContext = 'Mixed';
   bool _mealRemindersEnabled = true;
+  /// Blocks editing until cached/remote profile fields are applied.
+  bool _isHydratingProfile = false;
 
   @override
   void initState() {
@@ -126,49 +128,83 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
     _heightController.addListener(refresh);
     _weightController.addListener(refresh);
 
-    // Best-effort sync + load local cached values (offline-first).
-    Future.microtask(() async {
+    if (widget.isEditing) {
+      _isHydratingProfile = true;
+    }
+
+    Future.microtask(_hydrateProfile);
+  }
+
+  Future<void> _hydrateProfile() async {
+    try {
       await ref.read(profileRepositoryProvider).syncPendingIfAny();
-      // Fresh install support: pull the server profile when online.
-      await ref.read(profileRepositoryProvider).fetchRemoteAndCache();
-      final local = await ref.read(profileRepositoryProvider).readLocalProfile();
-      if (!mounted || local == null) return;
 
-      // Only prefill if user hasn't typed yet.
-      if (_nameController.text.isEmpty && local['name'] is String) {
-        _nameController.text = (local['name'] as String);
-      }
-      if (_ageController.text.isEmpty && local['age'] != null) {
-        _ageController.text = '${local['age']}';
-      }
-      if (_heightController.text.isEmpty && local['height'] != null) {
-        _heightController.text = '${local['height']}';
-      }
-      if (_weightController.text.isEmpty && local['weight'] != null) {
-        _weightController.text = '${local['weight']}';
-      }
-
-      setState(() {
-        _selectedGender = local['gender'] as String?;
-        _selectedActivityLevel = local['activity_level'] as String?;
-        _selectedGoal = local['goal'] as String?;
-        _eatingPattern = local['eating_pattern'] as String? ?? _eatingPattern;
-        _lifeStage = local['life_stage'] as String? ?? _lifeStage;
-        _mealSourcePreference =
-            local['meal_source_preference'] as String? ?? _mealSourcePreference;
-        _activityContext =
-            local['activity_context'] as String? ?? _activityContext;
-        final conds = local['health_conditions'];
-        if (conds is List) {
-          _selectedConditions
-            ..clear()
-            ..addAll(conds.map((e) => e.toString()));
+      // Show local cache first so edit mode can unlock quickly.
+      var local = await ref.read(profileRepositoryProvider).readLocalProfile();
+      if (!mounted) return;
+      if (local != null) {
+        _applyProfile(local, overwriteTypedFields: widget.isEditing);
+        if (widget.isEditing && _isHydratingProfile) {
+          setState(() => _isHydratingProfile = false);
         }
-        final reminders = local['meal_reminders_enabled'];
-        if (reminders is bool) _mealRemindersEnabled = reminders;
-        final pub = local['is_public_on_leaderboard'];
-        _isPublicOnLeaderboard = pub is bool ? pub : _isPublicOnLeaderboard;
-      });
+      }
+
+      // Then refresh from server when online.
+      await ref.read(profileRepositoryProvider).fetchRemoteAndCache();
+      local = await ref.read(profileRepositoryProvider).readLocalProfile();
+      if (!mounted || local == null) return;
+      _applyProfile(local, overwriteTypedFields: widget.isEditing);
+    } finally {
+      if (mounted && _isHydratingProfile) {
+        setState(() => _isHydratingProfile = false);
+      }
+    }
+  }
+
+  void _applyProfile(
+    Map<String, dynamic> local, {
+    required bool overwriteTypedFields,
+  }) {
+    void setText(TextEditingController c, Object? value) {
+      if (value == null) return;
+      final next = '$value';
+      if (overwriteTypedFields || c.text.isEmpty) {
+        c.text = next;
+      }
+    }
+
+    setText(_nameController, local['name'] is String ? local['name'] : null);
+    setText(_ageController, local['age']);
+    setText(_heightController, local['height']);
+    setText(_weightController, local['weight']);
+
+    setState(() {
+      if (overwriteTypedFields || _selectedGender == null) {
+        _selectedGender = local['gender'] as String? ?? _selectedGender;
+      }
+      if (overwriteTypedFields || _selectedActivityLevel == null) {
+        _selectedActivityLevel =
+            local['activity_level'] as String? ?? _selectedActivityLevel;
+      }
+      if (overwriteTypedFields || _selectedGoal == null) {
+        _selectedGoal = local['goal'] as String? ?? _selectedGoal;
+      }
+      _eatingPattern = local['eating_pattern'] as String? ?? _eatingPattern;
+      _lifeStage = local['life_stage'] as String? ?? _lifeStage;
+      _mealSourcePreference =
+          local['meal_source_preference'] as String? ?? _mealSourcePreference;
+      _activityContext =
+          local['activity_context'] as String? ?? _activityContext;
+      final conds = local['health_conditions'];
+      if (conds is List) {
+        _selectedConditions
+          ..clear()
+          ..addAll(conds.map((e) => e.toString()));
+      }
+      final reminders = local['meal_reminders_enabled'];
+      if (reminders is bool) _mealRemindersEnabled = reminders;
+      final pub = local['is_public_on_leaderboard'];
+      if (pub is bool) _isPublicOnLeaderboard = pub;
     });
   }
 
@@ -342,7 +378,65 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
               ),
             ),
           ),
+
+          if (_isHydratingProfile) _buildProfileLoadingBarrier(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProfileLoadingBarrier() {
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: ColoredBox(
+          color: Colors.black.withValues(alpha: 0.35),
+          child: Center(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: 280,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 28,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        color: primary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Loading your health profile',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: slate800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

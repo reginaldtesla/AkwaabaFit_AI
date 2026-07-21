@@ -47,11 +47,10 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
   try {
     sub = Pedometer.stepCountStream.listen(
       (event) async {
-        final today = await calc.update(event.steps);
-        final cached = await StepsOfflineRecorder.cachedTodayStepsOrNull() ?? 0;
-        // Never let a transient sensor glitch wipe a higher already-saved total.
-        final best = today >= cached ? today : cached;
-        controller.add(best);
+        final cached =
+            await StepsOfflineRecorder.cachedTodayStepsOrNull() ?? 0;
+        final today = await calc.update(event.steps, floor: cached);
+        controller.add(today);
         if (today >= cached) {
           unawaited(StepsOfflineRecorder.onStepsChanged(today));
         }

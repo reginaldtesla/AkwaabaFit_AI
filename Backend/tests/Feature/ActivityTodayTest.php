@@ -6,6 +6,7 @@ use App\Models\DailyStepLog;
 use App\Models\HourlyStepLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class ActivityTodayTest extends TestCase
@@ -114,7 +115,7 @@ class ActivityTodayTest extends TestCase
 
     public function test_hourly_log_updates_daily_steps_for_leaderboard(): void
     {
-        \Illuminate\Support\Facades\Cache::flush();
+        Cache::flush();
 
         $user = User::factory()->create([
             'name' => 'Solo Walker',
@@ -136,6 +137,6 @@ class ActivityTodayTest extends TestCase
 
         $board->assertStatus(200)
             ->assertJsonFragment(['name' => 'Solo Walker'])
-            ->assertJsonPath('data.0.total_steps', 4200);
+            ->assertJsonPath('entries.0.steps', 4200);
     }
 }

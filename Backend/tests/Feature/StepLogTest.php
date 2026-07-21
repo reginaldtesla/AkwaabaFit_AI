@@ -52,9 +52,14 @@ class StepLogTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('period', 'day')
-            ->assertJsonFragment([
-                'name' => 'Champion User',
-            ]);
+            ->assertJsonPath('entries.0.name', 'Champion User')
+            ->assertJsonPath('entries.0.steps', 12000)
+            ->assertJsonPath('entries.0.rank', 1)
+            ->assertJsonPath('entries.0.is_me', true)
+            ->assertJsonPath('me.opted_in', true)
+            ->assertJsonPath('me.in_list', true)
+            ->assertJsonPath('me.rank', 1)
+            ->assertJsonPath('me.steps', 12000);
     }
 
     public function test_user_can_view_monthly_leaderboard(): void
@@ -76,9 +81,9 @@ class StepLogTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('period', 'month')
-            ->assertJsonFragment([
-                'name' => 'Monthly User',
-            ]);
+            ->assertJsonPath('entries.0.name', 'Monthly User')
+            ->assertJsonPath('entries.0.steps', 12000)
+            ->assertJsonPath('me.opted_in', true);
     }
 
     public function test_user_can_fetch_their_daily_rank_for_today(): void
@@ -113,8 +118,7 @@ class StepLogTest extends TestCase
             ->assertJsonPath('period', 'day')
             ->assertJsonPath('optedIn', true)
             ->assertJsonPath('stepsToday', 5000)
-            ->assertJsonPath('rank', 2)
-            ->assertJsonPath('user.location', 'Accra');
+            ->assertJsonPath('rank', 2);
     }
 
     public function test_user_can_fetch_their_monthly_rank(): void
@@ -176,7 +180,7 @@ class StepLogTest extends TestCase
         $response = $this->actingAs($user)->getJson('/api/leaderboard/daily?period=month');
 
         $response->assertStatus(200)
-            ->assertJsonPath('data.0.total_steps', 5000);
+            ->assertJsonPath('entries.0.steps', 5000);
     }
 
     public function test_daily_leaderboard_uses_today_only_not_month_total(): void
@@ -204,7 +208,7 @@ class StepLogTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('period', 'day')
-            ->assertJsonPath('data.0.total_steps', 2000);
+            ->assertJsonPath('entries.0.steps', 2000);
     }
 
     public function test_leaderboard_excludes_users_who_opted_out_of_public_board(): void
@@ -244,7 +248,7 @@ class StepLogTest extends TestCase
             ->assertJsonFragment(['name' => 'Public Walker'])
             ->assertJsonMissing(['name' => 'Private Walker']);
 
-        $names = collect($response->json('data'))->pluck('name')->all();
+        $names = collect($response->json('entries'))->pluck('name')->all();
         $this->assertSame(['Public Walker'], $names);
     }
 

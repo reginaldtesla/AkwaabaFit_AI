@@ -2,7 +2,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/config/app_config.dart';
-import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 
 /// Persists today's steps locally and syncs-or-queues `POST /activity/hourly/log`.
@@ -100,7 +99,6 @@ class StepsOfflineRecorder {
       });
       _lastDirectPostAt = now;
       await db.deletePendingActivityHourlyOutbox();
-      LeaderboardRefreshBus.notify();
     } catch (_) {
       await db.replacePendingActivityHourlyOutbox({'step_count': steps});
     }
@@ -108,12 +106,7 @@ class StepsOfflineRecorder {
 
   /// Force-sync today's steps to the server (ignores the normal 2‑minute throttle).
   /// Needed so opted-in users appear on the leaderboard without waiting.
-  ///
-  /// Pass [notifyRefresh]: false when the leaderboard itself is already loading,
-  /// so a successful sync does not kick off a second full reload.
-  static Future<bool> flushTodayStepsForLeaderboard({
-    bool notifyRefresh = true,
-  }) async {
+  static Future<bool> flushTodayStepsForLeaderboard() async {
     final db = await SqliteOfflineDb.getInstance();
     final today = DateTime.now().toIso8601String().substring(0, 10);
     const storage = FlutterSecureStorage();
@@ -154,9 +147,6 @@ class StepsOfflineRecorder {
         'log_date': today,
       });
       _lastDirectPostAt = DateTime.now();
-      if (notifyRefresh) {
-        LeaderboardRefreshBus.notify();
-      }
       return true;
     } catch (_) {
       await db.enqueueOutbox(type: 'steps_sync', payload: {

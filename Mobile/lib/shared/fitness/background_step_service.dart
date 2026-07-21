@@ -234,15 +234,28 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
   try {
     stepSub = Pedometer.stepCountStream.listen(
       (event) async {
-        latestTodaySteps = await todaySteps.update(event.steps);
+        final cached =
+            await StepsOfflineRecorder.cachedTodayStepsOrNull() ?? 0;
+        latestTodaySteps =
+            await todaySteps.update(event.steps, floor: cached);
         final s = latestTodaySteps ?? 0;
+        if (s >= cached) {
+          unawaited(StepsOfflineRecorder.onStepsChanged(s));
+        }
         unawaited(_onStepsUpdated(s));
         if (android != null) {
           final fgAndroid = android;
+          // Keep the shade notification on the same total as Stride.
           debounceFg?.cancel();
-          debounceFg = Timer(const Duration(seconds: 30), () {
+          debounceFg = Timer(const Duration(seconds: 5), () {
             _applySamsungStyleForeground(fgAndroid, s);
           });
+          // Immediate refresh when the shown value would jump a lot (e.g. after
+          // aligning with the cached day total).
+          final lastShown = _lastForegroundSteps;
+          if (lastShown == null || (s - lastShown).abs() >= 100) {
+            await _applySamsungStyleForeground(fgAndroid, s, force: true);
+          }
         }
       },
       onError: (_) {

@@ -25,9 +25,11 @@ class OfflineSessionCleanup {
       final key =
           '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       await storage.delete(key: 'steps_baseline_$key');
+      await storage.delete(key: 'steps_carry_$key');
     }
     final utcStyle = today.toIso8601String().substring(0, 10);
     await storage.delete(key: 'steps_baseline_$utcStyle');
+    await storage.delete(key: 'steps_carry_$utcStyle');
   }
 
   static Future<void> wipeDeviceCachesForAccountSwitch() async {

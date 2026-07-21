@@ -18,7 +18,6 @@ import 'package:mobile/shared/app_update/app_update_provider.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/weather/device_weather_service.dart';
 import 'package:mobile/shared/fitness/leaderboard_provider.dart';
-import 'package:mobile/shared/fitness/leaderboard_refresh_bus.dart';
 import 'package:mobile/shared/fitness/step_goal_notification_listener.dart';
 import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 
@@ -131,7 +130,6 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       ref.read(hydrationServiceProvider).syncPendingIfAny();
       ref.invalidate(appUpdateInfoProvider);
       ref.invalidate(leaderboardProvider);
-      LeaderboardRefreshBus.notify();
     });
   }
 
@@ -153,7 +151,6 @@ class _OfflineSyncListenerState extends ConsumerState<_OfflineSyncListener>
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(activityDataProvider);
       ref.invalidate(leaderboardProvider);
-      LeaderboardRefreshBus.notify();
     }
   }
 
