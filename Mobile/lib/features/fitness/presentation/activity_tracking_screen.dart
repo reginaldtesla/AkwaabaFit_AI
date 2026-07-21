@@ -737,10 +737,9 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
             onRetry: () => ref.invalidate(activityDataProvider),
           ),
           data: (data) {
+            // Live pedometer is source of truth; server can lag or hold a stale sync.
             final liveSteps = stepsTodayAsync.valueOrNull;
-            final displaySteps = liveSteps == null
-                ? data.stepsToday
-                : (liveSteps > data.stepsToday ? liveSteps : data.stepsToday);
+            final displaySteps = liveSteps ?? data.stepsToday;
             final merged = liveSteps == null
                 ? data
                 : data.copyWith(

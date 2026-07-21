@@ -75,7 +75,10 @@ class ProfileController extends Controller
         /** @var UploadedFile $file */
         $file = $data['avatar'];
         $path = $file->storePublicly("avatars/{$user->id}", 'public');
-        $url = Storage::disk('public')->url($path);
+        $stored = Storage::disk('public')->url($path);
+        $url = str_starts_with($stored, 'http://') || str_starts_with($stored, 'https://')
+            ? $stored
+            : url($stored);
 
         $user->update(['avatar_url' => $url]);
 

@@ -9,6 +9,7 @@ use App\Services\DietitianAdviceService;
 use App\Services\OpenMeteoService;
 use App\Support\AirQualityThresholds;
 use App\Support\HealthProfileOptions;
+use App\Support\UserAvatar;
 use App\Support\WeatherCoordinates;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,13 +53,10 @@ class DashboardController extends Controller
         $start7 = $anchorEnd->copy()->subDays(6)->startOfDay();
         $end7 = $anchorEnd->copy();
 
-        $gender = strtolower((string) ($user->gender ?? ''));
-        $fallbackAvatar = match ($gender) {
-            'male' => 'https://i.pravatar.cc/150?img=12',
-            'female' => 'https://i.pravatar.cc/150?img=47',
-            default => 'https://i.pravatar.cc/150?img=5',
-        };
-        $avatarUrl = (string) ($user->avatar_url ?: $fallbackAvatar);
+        $avatarUrl = UserAvatar::url(
+            $user->avatar_url,
+            isset($user->gender) ? (string) $user->gender : null,
+        );
 
         $todaySteps = (int) DailyStepLog::query()
             ->where('user_id', $user->id)

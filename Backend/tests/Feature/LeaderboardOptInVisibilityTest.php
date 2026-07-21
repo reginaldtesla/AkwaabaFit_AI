@@ -46,6 +46,10 @@ class LeaderboardOptInVisibilityTest extends TestCase
         $names = collect($board)->pluck('name')->all();
         $this->assertContains('Fresh Opt In', $names);
 
+        $mine = collect($board)->firstWhere(fn ($row) => ($row['name'] ?? '') === 'Fresh Opt In');
+        $this->assertIsString($mine['avatar_url'] ?? null);
+        $this->assertNotSame('', $mine['avatar_url']);
+
         $this->actingAs($user)
             ->getJson('/api/leaderboard/daily/me?period=day')
             ->assertOk()

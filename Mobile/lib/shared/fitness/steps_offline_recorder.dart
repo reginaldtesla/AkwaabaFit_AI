@@ -43,7 +43,7 @@ class StepsOfflineRecorder {
     if (lastDate != null && lastDate.isNotEmpty && lastDate != today) {
       // Store final observed steps for the previous date.
       await db.upsertStepsLocal(logDate: lastDate, stepCount: lastValue);
-      await db.enqueueOutbox(type: 'steps_sync', payload: {
+      await db.replacePendingStepsSyncOutbox({
         'log_date': lastDate,
         'step_count': lastValue,
       });
@@ -62,7 +62,7 @@ class StepsOfflineRecorder {
 
     if (!online) {
       await db.replacePendingActivityHourlyOutbox({'step_count': steps});
-      await db.enqueueOutbox(type: 'steps_sync', payload: {
+      await db.replacePendingStepsSyncOutbox({
         'log_date': today,
         'step_count': steps,
       });
@@ -72,11 +72,16 @@ class StepsOfflineRecorder {
     final now = DateTime.now();
     if (_lastDirectPostAt != null &&
         now.difference(_lastDirectPostAt!).inSeconds < 120) {
+      // Keep a single pending sync with the latest total for when throttle ends.
+      await db.replacePendingStepsSyncOutbox({
+        'log_date': today,
+        'step_count': steps,
+      });
       return;
     }
 
     try {
-      await db.enqueueOutbox(type: 'steps_sync', payload: {
+      await db.replacePendingStepsSyncOutbox({
         'log_date': today,
         'step_count': steps,
       });
@@ -149,7 +154,7 @@ class StepsOfflineRecorder {
       _lastDirectPostAt = DateTime.now();
       return true;
     } catch (_) {
-      await db.enqueueOutbox(type: 'steps_sync', payload: {
+      await db.replacePendingStepsSyncOutbox({
         'log_date': today,
         'step_count': steps,
       });

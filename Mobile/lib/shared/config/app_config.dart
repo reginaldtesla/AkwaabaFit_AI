@@ -25,10 +25,18 @@ class AppConfig {
       };
 
   static String normalizeUrlForDevice(String url) {
-    // If backend returns localhost URLs, rewrite to the configured host.
-    final localhost = RegExp(r'http://localhost:\d+');
-    if (!localhost.hasMatch(url)) return url;
-    return url.replaceFirst(localhost, serverBaseUrl);
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return trimmed;
+
+    // Relative storage paths from Laravel (`/storage/avatars/...`).
+    if (trimmed.startsWith('/')) {
+      return '$serverBaseUrl$trimmed';
+    }
+
+    // Rewrite localhost / loopback hosts to the configured API host.
+    final loopback = RegExp(r'https?://(localhost|127\.0\.0\.1)(:\d+)?');
+    if (!loopback.hasMatch(trimmed)) return trimmed;
+    return trimmed.replaceFirst(loopback, serverBaseUrl);
   }
 
   /// Minimum AI confidence before showing a scan result (matches server default).

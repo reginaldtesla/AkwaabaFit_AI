@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
+import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
 
 enum LeaderboardPeriod { day, month }
 
@@ -72,6 +73,9 @@ final leaderboardProvider =
   if (!await isDeviceOnline()) {
     throw Exception('LEADERBOARD_OFFLINE');
   }
+
+  // Push the phone's current today total before ranking so the board matches Stride.
+  await StepsOfflineRecorder.flushTodayStepsForLeaderboard();
 
   const storage = FlutterSecureStorage();
   final token = await storage.read(key: 'sanctum_token');

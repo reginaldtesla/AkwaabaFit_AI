@@ -139,4 +139,32 @@ class ActivityTodayTest extends TestCase
             ->assertJsonFragment(['name' => 'Solo Walker'])
             ->assertJsonPath('entries.0.steps', 4200);
     }
+
+    public function test_hourly_log_can_correct_daily_steps_downward(): void
+    {
+        Cache::flush();
+
+        $user = User::factory()->create([
+            'is_public_on_leaderboard' => true,
+        ]);
+
+        DailyStepLog::create([
+            'user_id' => $user->id,
+            'log_date' => now()->toDateString(),
+            'step_count' => 2511,
+        ]);
+
+        $this->actingAs($user)->postJson('/api/activity/hourly/log', [
+            'step_count' => 2443,
+        ])->assertStatus(201);
+
+        $this->assertDatabaseHas('daily_step_logs', [
+            'user_id' => $user->id,
+            'step_count' => 2443,
+        ]);
+
+        $board = $this->actingAs($user)->getJson('/api/leaderboard/daily');
+        $board->assertStatus(200)
+            ->assertJsonPath('entries.0.steps', 2443);
+    }
 }

@@ -153,8 +153,11 @@ class ActivityController extends Controller
             ->whereDate('log_date', $logDate)
             ->first();
 
+        // Mobile sends an absolute "steps today" total (not a delta). Store that
+        // value so a corrected lower reading (e.g. after sensor reboot/carry) can
+        // update the leaderboard — max() would permanently stick an inflated total.
         if ($existing) {
-            $existing->step_count = max((int) $existing->step_count, $stepCount);
+            $existing->step_count = $stepCount;
             $existing->save();
         } else {
             DailyStepLog::create([

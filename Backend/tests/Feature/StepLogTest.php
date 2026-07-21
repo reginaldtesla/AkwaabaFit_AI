@@ -60,6 +60,10 @@ class StepLogTest extends TestCase
             ->assertJsonPath('me.in_list', true)
             ->assertJsonPath('me.rank', 1)
             ->assertJsonPath('me.steps', 12000);
+
+        $avatar = $response->json('entries.0.avatar_url');
+        $this->assertIsString($avatar);
+        $this->assertNotSame('', $avatar);
     }
 
     public function test_user_can_view_monthly_leaderboard(): void

@@ -6,6 +6,7 @@ use App\Http\Requests\SyncStepsRequest;
 use App\Models\DailyStepLog;
 use App\Models\User;
 use App\Support\LeaderboardCache;
+use App\Support\UserAvatar;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -185,7 +186,7 @@ class DailyStepLogController extends Controller
             ->where('users.is_public_on_leaderboard', true)
             ->whereDate('daily_step_logs.log_date', '>=', $startDate)
             ->whereDate('daily_step_logs.log_date', '<=', $endDate)
-            ->groupBy('users.id', 'users.name', 'users.avatar_url')
+            ->groupBy('users.id', 'users.name', 'users.avatar_url', 'users.gender')
             ->havingRaw($sumSteps ? 'SUM(daily_step_logs.step_count) > 0' : 'MAX(daily_step_logs.step_count) > 0')
             ->orderByDesc('total_steps')
             ->orderBy('users.id')
@@ -194,13 +195,14 @@ class DailyStepLogController extends Controller
                 'users.id',
                 'users.name',
                 'users.avatar_url',
+                'users.gender',
                 DB::raw($stepsExpr),
             ]);
     }
 
     /**
      * @param  Collection<int, object>  $rows
-     * @return list<array{rank: int, id: string, name: string, avatar_url: ?string, steps: int, is_me: bool}>
+     * @return list<array{rank: int, id: string, name: string, avatar_url: string, steps: int, is_me: bool}>
      */
     private function rankedEntries(Collection $rows, string $viewerId): array
     {
@@ -213,7 +215,10 @@ class DailyStepLogController extends Controller
                 'rank' => $rank,
                 'id' => $id,
                 'name' => (string) ($row->name ?? ''),
-                'avatar_url' => $row->avatar_url,
+                'avatar_url' => UserAvatar::url(
+                    isset($row->avatar_url) ? (string) $row->avatar_url : null,
+                    isset($row->gender) ? (string) $row->gender : null,
+                ),
                 'steps' => (int) ($row->total_steps ?? 0),
                 'is_me' => $id === $viewerId,
             ];
@@ -224,7 +229,7 @@ class DailyStepLogController extends Controller
     }
 
     /**
-     * @param  list<array{rank: int, id: string, name: string, avatar_url: ?string, steps: int, is_me: bool}>  $entries
+     * @param  list<array{rank: int, id: string, name: string, avatar_url: string, steps: int, is_me: bool}>  $entries
      * @return array{opted_in: bool, rank: ?int, steps: int, in_list: bool}
      */
     private function meSummary(
@@ -446,7 +451,10 @@ class DailyStepLogController extends Controller
         return [
             'id' => (string) $user->id,
             'name' => (string) ($user->name ?? ''),
-            'avatar_url' => $user->avatar_url,
+            'avatar_url' => UserAvatar::url(
+                $user->avatar_url,
+                isset($user->gender) ? (string) $user->gender : null,
+            ),
         ];
     }
 }

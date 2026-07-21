@@ -905,6 +905,27 @@ class SqliteOfflineDb {
     return nextTotal;
   }
 
+  /// Keeps a single pending daily steps sync so stale higher totals cannot replay later.
+  Future<void> replacePendingStepsSyncOutbox(
+    Map<String, dynamic> payload,
+  ) async {
+    await _db.transaction((txn) async {
+      await txn.delete(
+        'outbox',
+        where: "type = ? AND status = 'pending'",
+        whereArgs: ['steps_sync'],
+      );
+      await txn.insert('outbox', {
+        'type': 'steps_sync',
+        'payload_json': jsonEncode(payload),
+        'status': 'pending',
+        'attempt_count': 0,
+        'created_at': DateTime.now().toIso8601String(),
+        'last_attempt_at': null,
+      });
+    });
+  }
+
   /// Keeps a single pending hourly step job so the outbox does not grow with every sensor tick.
   Future<void> replacePendingActivityHourlyOutbox(
     Map<String, dynamic> payload,
