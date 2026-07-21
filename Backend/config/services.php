@@ -56,6 +56,10 @@ return [
             'FOOD_SCAN_HF_MODEL',
             'Kennethdot/convnext_finetuned_ghanaian_food'
         ),
+        'huggingface_inference_url' => env(
+            'FOOD_SCAN_HF_INFERENCE_URL',
+            'https://router.huggingface.co/hf-inference/models'
+        ),
         'hf_confidence_threshold' => (float) env('FOOD_SCAN_HF_THRESHOLD', 0.55),
         /** Detections below this are treated as "not food" (reduces false positives). */
         'min_detection_confidence' => (float) env('FOOD_SCAN_MIN_CONFIDENCE', 0.30),

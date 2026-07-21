@@ -21,7 +21,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'Jollof rice Ghana', 'score' => 0.91],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response(['candidates' => []]),
@@ -50,7 +50,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'Okro stew Ghana', 'score' => 0.58],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response(['candidates' => []]),
@@ -77,7 +77,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'Banku Ghana', 'score' => 0.42],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response([
@@ -119,7 +119,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'unknown dish', 'score' => 0.20],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response([
@@ -164,7 +164,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'Roasted plaintain Ghana', 'score' => 0.84],
                 ['label' => 'Red red Ghana', 'score' => 0.71],
             ]),
@@ -193,7 +193,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'unknown plate', 'score' => 0.18],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response([
@@ -239,7 +239,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response([
+            'router.huggingface.co/*' => Http::response([
                 ['label' => 'Banku Ghana', 'score' => 0.22],
             ]),
             'generativelanguage.googleapis.com/*' => Http::response([
@@ -275,7 +275,7 @@ class FoodScanTest extends TestCase
         ]);
 
         Http::fake([
-            'api-inference.huggingface.co/*' => Http::response('model loading', 503),
+            'router.huggingface.co/*' => Http::response('model loading', 503),
             'generativelanguage.googleapis.com/*' => Http::response('quota exceeded', 429),
         ]);
 

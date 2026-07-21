@@ -377,32 +377,58 @@ class FoodScanService
             'Kennethdot/convnext_finetuned_ghanaian_food'
         );
 
+        // Legacy api-inference.huggingface.co is decommissioned; use the HF Inference router.
+        $base = rtrim((string) config(
+            'services.food_scan.huggingface_inference_url',
+            'https://router.huggingface.co/hf-inference/models'
+        ), '/');
+
         try {
             $bytes = (string) file_get_contents($image->getRealPath());
             $mime = $image->getMimeType() ?: 'image/jpeg';
+            $url = "{$base}/{$model}";
 
             $response = Http::withToken($token)
                 ->timeout((int) config('services.food_scan.timeout', 90))
-                ->withHeaders(['Content-Type' => $mime])
+                ->withHeaders([
+                    'Content-Type' => $mime,
+                    'Accept' => 'application/json',
+                ])
                 ->withBody($bytes, $mime)
-                ->post("https://api-inference.huggingface.co/models/{$model}");
+                ->post($url);
 
+            // Cold start / model loading.
             if ($response->status() === 503) {
                 sleep(2);
                 $response = Http::withToken($token)
                     ->timeout((int) config('services.food_scan.timeout', 90))
-                    ->withHeaders(['Content-Type' => $mime])
+                    ->withHeaders([
+                        'Content-Type' => $mime,
+                        'Accept' => 'application/json',
+                    ])
                     ->withBody($bytes, $mime)
-                    ->post("https://api-inference.huggingface.co/models/{$model}");
+                    ->post($url);
             }
 
             if (! $response->successful()) {
+                report(new \RuntimeException(
+                    'Ghana food classifier HTTP '.$response->status().': '.Str::limit($response->body(), 300)
+                ));
+
                 return [];
             }
 
             $json = $response->json();
             if (! is_array($json)) {
                 return [];
+            }
+
+            // Some responses wrap predictions: { "predictions": [...] } or nested lists.
+            if (isset($json[0]) && is_array($json[0]) && isset($json[0][0]) && is_array($json[0][0])) {
+                $json = $json[0];
+            }
+            if (isset($json['predictions']) && is_array($json['predictions'])) {
+                $json = $json['predictions'];
             }
 
             $rows = [];
@@ -421,7 +447,9 @@ class FoodScanService
             usort($rows, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
 
             return array_slice($rows, 0, 5);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            report($e);
+
             return [];
         }
     }
