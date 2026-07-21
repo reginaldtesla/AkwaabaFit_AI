@@ -13,7 +13,7 @@ import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 export 'package:mobile/shared/fitness/leaderboard_provider.dart'
     show LeaderboardEntry, LeaderboardPeriod, leaderboardProvider;
 
-class DailyLeaderboardScreen extends ConsumerWidget {
+class DailyLeaderboardScreen extends ConsumerStatefulWidget {
   const DailyLeaderboardScreen({super.key});
 
   /// Matches Stride / dashboard brand greens (not the mock’s purple).
@@ -26,20 +26,143 @@ class DailyLeaderboardScreen extends ConsumerWidget {
   static const Color _silver = Color(0xFF94A3B8);
   static const Color _bronze = Color(0xFFD97706);
 
-  Future<void> _reload(WidgetRef ref) async {
+  @override
+  ConsumerState<DailyLeaderboardScreen> createState() =>
+      _DailyLeaderboardScreenState();
+
+  static String formatSteps(int steps) {
+    final digits = steps.toString();
+    final buf = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
+      buf.write(digits[i]);
+    }
+    return buf.toString();
+  }
+}
+
+class _DailyLeaderboardScreenState
+    extends ConsumerState<DailyLeaderboardScreen> {
+  bool _offlineDialogVisible = false;
+
+  Future<void> _reload() async {
     ref.invalidate(leaderboardProvider);
     try {
       await ref.read(leaderboardProvider.future);
     } catch (_) {}
   }
 
+  Future<void> _showOfflineDialog() async {
+    if (!mounted || _offlineDialogVisible) return;
+    _offlineDialogVisible = true;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        var refreshing = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              icon: Icon(
+                Icons.wifi_off_rounded,
+                size: 40,
+                color: DailyLeaderboardScreen._muted,
+              ),
+              title: Text(
+                'No internet connection',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: DailyLeaderboardScreen._ink,
+                ),
+              ),
+              content: Text(
+                'The leaderboard needs Wi‑Fi or mobile data. Connect, then tap Refresh.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  height: 1.4,
+                  color: DailyLeaderboardScreen._muted,
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                FilledButton.icon(
+                  onPressed: refreshing
+                      ? null
+                      : () async {
+                          setDialogState(() => refreshing = true);
+                          await _reload();
+                          if (!dialogContext.mounted) return;
+                          final stillOffline = ref
+                              .read(leaderboardProvider)
+                              .hasError;
+                          if (!stillOffline) {
+                            Navigator.of(dialogContext).pop();
+                            return;
+                          }
+                          setDialogState(() => refreshing = false);
+                        },
+                  icon: refreshing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 20),
+                  label: Text(refreshing ? 'Checking…' : 'Refresh'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DailyLeaderboardScreen._primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (mounted) {
+      _offlineDialogVisible = false;
+    }
+  }
+
+  static bool _isOfflineError(Object err) =>
+      err.toString().contains('LEADERBOARD_OFFLINE');
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final period = ref.watch(leaderboardPeriodProvider);
     final state = ref.watch(leaderboardProvider);
 
+    ref.listen<AsyncValue<LeaderboardSnapshot>>(leaderboardProvider,
+        (previous, next) {
+      next.whenOrNull(
+        error: (err, _) {
+          if (_isOfflineError(err)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showOfflineDialog();
+            });
+          }
+        },
+      );
+    });
+
     return Scaffold(
-      backgroundColor: _forest,
+      backgroundColor: DailyLeaderboardScreen._forest,
       bottomNavigationBar: AppBottomNav(
         activeTab: AppTab.stats,
         onTabSelected: (tab) => _handleTab(context, tab),
@@ -86,13 +209,19 @@ class DailyLeaderboardScreen extends ConsumerWidget {
                     child: CircularProgressIndicator(color: Colors.white),
                   ),
                   error: (err, _) => _ErrorBody(
-                    offline: err.toString().contains('LEADERBOARD_OFFLINE'),
-                    onRetry: () => _reload(ref),
+                    offline: _isOfflineError(err),
+                    onRetry: () async {
+                      if (_isOfflineError(err)) {
+                        await _showOfflineDialog();
+                      } else {
+                        await _reload();
+                      }
+                    },
                   ),
                   data: (snapshot) => RefreshIndicator(
-                    color: _primary,
+                    color: DailyLeaderboardScreen._primary,
                     backgroundColor: Colors.white,
-                    onRefresh: () => _reload(ref),
+                    onRefresh: _reload,
                     child: _LeaderboardScroll(snapshot: snapshot),
                   ),
                 ),
@@ -102,16 +231,6 @@ class DailyLeaderboardScreen extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  static String formatSteps(int steps) {
-    final digits = steps.toString();
-    final buf = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
-      buf.write(digits[i]);
-    }
-    return buf.toString();
   }
 
   void _handleTab(BuildContext context, AppTab tab) {

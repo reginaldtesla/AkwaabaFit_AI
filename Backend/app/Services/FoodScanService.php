@@ -13,80 +13,240 @@ use Illuminate\Support\Str;
  */
 class FoodScanService
 {
+    /**
+     * Closed vocabulary for Gemini — must match nutrition catalog class_name values.
+     *
+     * @var list<string>
+     */
+    private const CATALOG_CLASS_NAMES = [
+        'banku',
+        'beans',
+        'bread',
+        'burger',
+        'chicken',
+        'egg-pepper',
+        'fufu',
+        'hausa-koko',
+        'jollof',
+        'kelewele',
+        'kenkey',
+        'kokonte',
+        'koose',
+        'kontomire',
+        'meat',
+        'nkate-cake',
+        'okro',
+        'pasta',
+        'pizza',
+        'plantain',
+        'rice',
+        'salad',
+        'waakye',
+        'yam',
+        'groundnut-soup',
+        'palmnut-soup',
+        'shito',
+        'tilapia',
+        'fish',
+        'ebunubunu',
+        'apapransa',
+        'tubaani',
+        'kyinkyinga',
+    ];
+
     /** Maps HF Ghana model labels → nutrition catalog slugs. */
     private const GHANA_LABEL_ALIASES = [
         'jollof rice ghana' => 'jollof',
         'jollof rice' => 'jollof',
         'jollof' => 'jollof',
+        'ghana jollof' => 'jollof',
+        'party jollof' => 'jollof',
         'banku ghana' => 'banku',
         'banku' => 'banku',
+        'banku and tilapia' => 'banku',
+        'banku with okro' => 'banku',
+        'banku with okra' => 'banku',
         'fufu ghana' => 'fufu',
         'fufu' => 'fufu',
+        'fufu and light soup' => 'fufu',
+        'fufu with soup' => 'fufu',
         'kenkey ghana' => 'kenkey',
         'fante kenkey' => 'kenkey',
+        'ga kenkey' => 'kenkey',
         'kenkey' => 'kenkey',
+        'kenkey and fish' => 'kenkey',
         'kelewele ghana' => 'kelewele',
         'kelewele' => 'kelewele',
         'waakye' => 'waakye',
+        'waakye ghana' => 'waakye',
+        'wakye' => 'waakye',
         'kokonte' => 'kokonte',
         'konkonte' => 'kokonte',
+        'kokonte ghana' => 'kokonte',
         'koose ghana' => 'koose',
         'koose' => 'koose',
+        'kose' => 'koose',
+        'akara' => 'koose',
         'red red ghana' => 'beans',
         'red red' => 'beans',
+        'red-red' => 'beans',
+        'gobe' => 'beans',
+        'gobe ghana' => 'beans',
+        'gobƐ ghana' => 'beans',
+        'beans stew' => 'beans',
+        'beans and plantain' => 'beans',
         'roasted plaintain ghana' => 'plantain',
         'roasted plantain ghana' => 'plantain',
+        'roasted plantain' => 'plantain',
+        'fried plantain' => 'plantain',
+        'fried plaintain' => 'plantain',
+        'ripe plantain' => 'plantain',
         'plantain' => 'plantain',
+        'plaintain' => 'plantain',
         'kontomire stew ghana' => 'kontomire',
         'kontomire stew' => 'kontomire',
+        'kontomire' => 'kontomire',
+        'palava sauce' => 'kontomire',
+        'palaver sauce' => 'kontomire',
         'yam porridge ghana' => 'yam',
+        'yam porridge' => 'yam',
+        'ampesi' => 'yam',
+        'boiled yam' => 'yam',
         'yam' => 'yam',
         'gari soakings' => 'rice',
+        'omotuo' => 'rice',
+        'omotuo ghana' => 'rice',
         'plain rice' => 'rice',
+        'white rice' => 'rice',
         'rice' => 'rice',
         'tatale ghana' => 'kelewele',
         'tatale' => 'kelewele',
-        'omotuo ghana' => 'rice',
         'okro stew ghana' => 'okro',
+        'okro stew' => 'okro',
+        'okra stew' => 'okro',
+        'okro soup' => 'okro',
+        'okra soup' => 'okro',
+        'okro' => 'okro',
+        'okra' => 'okro',
         'groundnut soup ghana' => 'groundnut-soup',
+        'groundnut soup' => 'groundnut-soup',
+        'peanut soup' => 'groundnut-soup',
+        'nkate nkwan' => 'groundnut-soup',
         'palmnut soup ghana' => 'palmnut-soup',
+        'palmnut soup' => 'palmnut-soup',
+        'palm nut soup' => 'palmnut-soup',
+        'abɛnkwan' => 'palmnut-soup',
+        'abenkwan' => 'palmnut-soup',
+        'light soup' => 'groundnut-soup',
         'ebunubunu ghana' => 'ebunubunu',
+        'ebunubunu' => 'ebunubunu',
         'apapransa ghana' => 'apapransa',
+        'apapransa' => 'apapransa',
         'tubaani ghana' => 'tubaani',
+        'tubaani' => 'tubaani',
         'kyinkyinga ghana' => 'kyinkyinga',
-        'gobe ghana' => 'beans',
-        'gobƐ ghana' => 'beans',
+        'kyinkyinga' => 'kyinkyinga',
+        'chichinga' => 'kyinkyinga',
+        'suya' => 'kyinkyinga',
         'zaafi ghana' => 'fufu',
-        'fried plantain' => 'plantain',
+        'zaafi' => 'fufu',
+        'tz' => 'fufu',
+        'tuo zaafi' => 'fufu',
+        'shito' => 'shito',
+        'black pepper sauce' => 'shito',
+        'grilled tilapia' => 'tilapia',
+        'fried tilapia' => 'tilapia',
+        'tilapia' => 'tilapia',
+        'grilled fish' => 'fish',
+        'fried fish' => 'fish',
+        'fish' => 'fish',
         'egg' => 'egg-pepper',
+        'boiled egg' => 'egg-pepper',
+        'egg stew' => 'egg-pepper',
+        'egg and pepper' => 'egg-pepper',
+        'egg pepper' => 'egg-pepper',
         'beans' => 'beans',
         'chicken' => 'chicken',
+        'fried chicken' => 'chicken',
+        'grilled chicken' => 'chicken',
         'meat' => 'meat',
+        'goat meat' => 'meat',
+        'beef' => 'meat',
+        'hausa koko' => 'hausa-koko',
+        'koko' => 'hausa-koko',
+        'nkate cake' => 'nkate-cake',
+        'peanut cake' => 'nkate-cake',
     ];
 
+    /** Maps Gemini / free-text names → nutrition catalog slugs. */
     private const SLM_ALIASES = [
         'jollof rice' => 'jollof',
         'jollof' => 'jollof',
+        'ghana jollof' => 'jollof',
         'banku and tilapia' => 'banku',
+        'banku with tilapia' => 'banku',
         'banku' => 'banku',
         'fufu' => 'fufu',
+        'fufu and soup' => 'fufu',
         'waakye' => 'waakye',
+        'wakye' => 'waakye',
         'kenkey' => 'kenkey',
+        'fante kenkey' => 'kenkey',
+        'ga kenkey' => 'kenkey',
         'kelewele' => 'kelewele',
         'plantain' => 'plantain',
         'fried plantain' => 'plantain',
+        'roasted plantain' => 'plantain',
+        'plaintain' => 'plantain',
         'boiled egg' => 'egg-pepper',
         'egg-pepper' => 'egg-pepper',
+        'egg pepper' => 'egg-pepper',
+        'egg stew' => 'egg-pepper',
         'hausa koko' => 'hausa-koko',
+        'koko' => 'hausa-koko',
         'kokonte' => 'kokonte',
+        'konkonte' => 'kokonte',
         'koose' => 'koose',
+        'kose' => 'koose',
+        'akara' => 'koose',
         'nkate cake' => 'nkate-cake',
         'plain rice' => 'rice',
+        'white rice' => 'rice',
+        'omotuo' => 'rice',
         'rice' => 'rice',
         'yam' => 'yam',
+        'ampesi' => 'yam',
+        'yam porridge' => 'yam',
         'beans' => 'beans',
         'red red' => 'beans',
+        'red-red' => 'beans',
+        'gobe' => 'beans',
         'kontomire' => 'kontomire',
+        'kontomire stew' => 'kontomire',
+        'palava sauce' => 'kontomire',
+        'okro' => 'okro',
+        'okra' => 'okro',
+        'okro stew' => 'okro',
+        'okra stew' => 'okro',
+        'groundnut soup' => 'groundnut-soup',
+        'groundnut-soup' => 'groundnut-soup',
+        'peanut soup' => 'groundnut-soup',
+        'palmnut soup' => 'palmnut-soup',
+        'palmnut-soup' => 'palmnut-soup',
+        'palm nut soup' => 'palmnut-soup',
+        'shito' => 'shito',
+        'tilapia' => 'tilapia',
+        'grilled tilapia' => 'tilapia',
+        'fish' => 'fish',
+        'fried fish' => 'fish',
+        'ebunubunu' => 'ebunubunu',
+        'apapransa' => 'apapransa',
+        'tubaani' => 'tubaani',
+        'kyinkyinga' => 'kyinkyinga',
+        'chichinga' => 'kyinkyinga',
+        'suya' => 'kyinkyinga',
+        'zaafi' => 'fufu',
+        'tuo zaafi' => 'fufu',
         'bread' => 'bread',
         'burger' => 'burger',
         'pizza' => 'pizza',
@@ -94,6 +254,45 @@ class FoodScanService
         'salad' => 'salad',
         'chicken' => 'chicken',
         'meat' => 'meat',
+        'goat meat' => 'meat',
+        'beef' => 'meat',
+    ];
+
+    /** @var array<string, string> */
+    private const DISPLAY_NAMES = [
+        'banku' => 'Banku',
+        'beans' => 'Beans (red red)',
+        'bread' => 'Bread',
+        'burger' => 'Burger',
+        'chicken' => 'Chicken',
+        'egg-pepper' => 'Egg & pepper stew',
+        'fufu' => 'Fufu',
+        'hausa-koko' => 'Hausa koko',
+        'jollof' => 'Jollof rice',
+        'kelewele' => 'Kelewele',
+        'kenkey' => 'Kenkey',
+        'kokonte' => 'Kokonte',
+        'koose' => 'Koose',
+        'kontomire' => 'Kontomire stew',
+        'meat' => 'Meat',
+        'nkate-cake' => 'Nkate cake',
+        'okro' => 'Okro stew',
+        'pasta' => 'Pasta',
+        'pizza' => 'Pizza',
+        'plantain' => 'Plantain',
+        'rice' => 'Rice',
+        'salad' => 'Salad',
+        'waakye' => 'Waakye',
+        'yam' => 'Yam',
+        'groundnut-soup' => 'Groundnut soup',
+        'palmnut-soup' => 'Palmnut soup',
+        'shito' => 'Shito',
+        'tilapia' => 'Tilapia',
+        'fish' => 'Fish',
+        'ebunubunu' => 'Ebunubunu',
+        'apapransa' => 'Apapransa',
+        'tubaani' => 'Tubaani',
+        'kyinkyinga' => 'Kyinkyinga',
     ];
 
     /**
@@ -105,7 +304,7 @@ class FoodScanService
      */
     public function scan(UploadedFile $image): array
     {
-        $hfThreshold = (float) config('services.food_scan.hf_confidence_threshold', 0.65);
+        $hfThreshold = (float) config('services.food_scan.hf_confidence_threshold', 0.55);
         $hfRows = $this->scanGhanaClassifier($image);
 
         $hfBest = $hfRows[0] ?? null;
@@ -252,12 +451,7 @@ class FoodScanService
                         [
                             'parts' => [
                                 [
-                                    'text' => 'Identify Ghanaian and West African foods visible in this image. '
-                                        .'If there is no food, or only non-food objects (people, furniture, packaging without food, empty plate), '
-                                        .'return JSON only: {"foods":[]}. '
-                                        .'Otherwise return JSON only: {"foods":[{"name":"jollof","confidence":0.9}]} '
-                                        .'Use short English names (banku, fufu, waakye, kenkey, kelewele, kontomire, red red). '
-                                        .'confidence 0-1 reflects how sure you are it is food. Up to 5 items.',
+                                    'text' => $this->geminiPrompt(),
                                 ],
                                 [
                                     'inline_data' => [
@@ -269,7 +463,7 @@ class FoodScanService
                         ],
                     ],
                     'generationConfig' => [
-                        'temperature' => 0.2,
+                        'temperature' => 0.15,
                         'responseMimeType' => 'application/json',
                     ],
                 ]);
@@ -310,6 +504,28 @@ class FoodScanService
         }
     }
 
+    private function geminiPrompt(): string
+    {
+        $allowed = implode(', ', self::CATALOG_CLASS_NAMES);
+
+        return <<<PROMPT
+You identify Ghanaian and West African foods in a meal photo for AkwaabaFit.
+
+If there is no food (people, furniture, packaging without food, empty plate), return JSON only:
+{"foods":[]}
+
+Otherwise return JSON only:
+{"foods":[{"name":"jollof","confidence":0.9}]}
+
+Rules:
+- "name" MUST be one of these exact catalog ids: {$allowed}
+- List every distinct food visible on the plate (up to 5). Mixed plates are common (e.g. banku + okro + tilapia, waakye + shito + chicken).
+- Prefer Ghanaian dish names over Western substitutes (banku is not dumpling; kenkey is not corn bread; fufu is not mashed potato; waakye is not rice and beans generically).
+- confidence is 0-1 how sure you are that item is present.
+- Do not invent foods that are not visible.
+PROMPT;
+    }
+
     /**
      * @param  list<array{name: string, confidence: float}>  $rows
      * @param  array<string, string>  $aliases
@@ -319,6 +535,8 @@ class FoodScanService
     {
         $out = [];
         $seen = [];
+        $mergedAliases = array_merge(self::GHANA_LABEL_ALIASES, self::SLM_ALIASES, $aliases);
+        $allowed = array_flip(self::CATALOG_CLASS_NAMES);
 
         foreach ($rows as $row) {
             $raw = trim((string) ($row['name'] ?? ''));
@@ -327,8 +545,14 @@ class FoodScanService
             }
 
             $key = Str::lower(preg_replace('/\s+/', ' ', $raw) ?? $raw);
-            $className = $aliases[$key] ?? Str::slug($key, '-');
-            if ($className === '' || isset($seen[$className])) {
+            $className = $mergedAliases[$key] ?? Str::slug($key, '-');
+
+            // Accept exact catalog ids returned by Gemini closed vocabulary.
+            if (! isset($allowed[$className]) && isset($allowed[$key])) {
+                $className = $key;
+            }
+
+            if ($className === '' || ! isset($allowed[$className]) || isset($seen[$className])) {
                 continue;
             }
 
@@ -340,7 +564,7 @@ class FoodScanService
             $seen[$className] = true;
             $out[] = [
                 'class_name' => $className,
-                'display_name' => $this->titleCase($className),
+                'display_name' => self::DISPLAY_NAMES[$className] ?? $this->titleCase($className),
                 'confidence' => round(min(1.0, max(0.0, $confidence)), 4),
                 'source' => $source,
             ];
@@ -359,6 +583,7 @@ class FoodScanService
     private function boostIfAgrees(array $hfBest, array $gemini): array
     {
         $hfKey = Str::lower(trim($hfBest['name']));
+        $hfKey = preg_replace('/\s+/', ' ', $hfKey) ?? $hfKey;
         $hfClass = self::GHANA_LABEL_ALIASES[$hfKey] ?? Str::slug($hfKey, '-');
 
         foreach ($gemini as $i => $item) {

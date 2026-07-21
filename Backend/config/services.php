@@ -56,7 +56,7 @@ return [
             'FOOD_SCAN_HF_MODEL',
             'Kennethdot/convnext_finetuned_ghanaian_food'
         ),
-        'hf_confidence_threshold' => (float) env('FOOD_SCAN_HF_THRESHOLD', 0.65),
+        'hf_confidence_threshold' => (float) env('FOOD_SCAN_HF_THRESHOLD', 0.55),
         /** Detections below this are treated as "not food" (reduces false positives). */
         'min_detection_confidence' => (float) env('FOOD_SCAN_MIN_CONFIDENCE', 0.30),
         'gemini_api_key' => env('GEMINI_API_KEY'),
