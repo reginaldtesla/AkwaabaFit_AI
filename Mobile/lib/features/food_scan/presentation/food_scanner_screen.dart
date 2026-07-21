@@ -454,12 +454,41 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
   bool _isCameraInitialized = false;
   bool _isFlashOn = false;
   bool _navigatedToHistoryAfterSave = false;
+  /// Frozen still shown while AI runs — user can put the phone down.
+  String? _capturedImagePath;
   final _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
     _initCamera();
+  }
+
+  void _clearCapturedPreview() {
+    if (_capturedImagePath == null) return;
+    setState(() => _capturedImagePath = null);
+  }
+
+  Future<void> _setCapturedPreview(String path) async {
+    if (!mounted) return;
+    setState(() => _capturedImagePath = path);
+    // Stop live preview so putting the phone down cannot change what is shown.
+    try {
+      final c = _cameraController;
+      if (c != null && c.value.isInitialized) {
+        await c.pausePreview();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _resumeLivePreview() async {
+    _clearCapturedPreview();
+    try {
+      final c = _cameraController;
+      if (c != null && c.value.isInitialized) {
+        await c.resumePreview();
+      }
+    } catch (_) {}
   }
 
   Future<void> _initCamera() async {
@@ -516,9 +545,11 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
       );
       if (picked == null) return;
       if (!mounted) return;
+      await _setCapturedPreview(picked.path);
       await ref.read(foodScannerProvider.notifier).scanFood(image: picked);
     } catch (e) {
       debugPrint('Gallery Picker Error: $e');
+      await _resumeLivePreview();
     }
   }
 
@@ -537,10 +568,13 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
     try {
       final photo = await controller.takePicture();
       if (!mounted) return;
+      // Freeze this still immediately — detection uses the file, not the live camera.
+      await _setCapturedPreview(photo.path);
       await ref.read(foodScannerProvider.notifier).scanFood(image: photo);
     } catch (e) {
       debugPrint('Capture Error: $e');
       if (!mounted) return;
+      await _resumeLivePreview();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not capture photo.')),
       );
@@ -572,16 +606,17 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
     });
 
     final result = scanState.valueOrNull;
-    final showCaptured =
-        result?.imagePath != null && File(result!.imagePath!).existsSync();
+    final frozenPath = _capturedImagePath ?? result?.imagePath;
+    final showFrozen =
+        frozenPath != null && File(frozenPath).existsSync();
 
     return Scaffold(
       backgroundColor: slate900,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (showCaptured)
-            Image.file(File(result.imagePath!), fit: BoxFit.cover)
+          if (showFrozen)
+            Image.file(File(frozenPath), fit: BoxFit.cover)
           else if (_isCameraInitialized && _cameraController != null)
             CameraPreview(_cameraController!)
           else
@@ -600,34 +635,9 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
 
           SafeArea(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildTopBar(),
-                if (scanState.value == null && !scanState.isLoading)
-                  Expanded(child: _buildScannerFrame()),
-                if (scanState.isLoading)
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const CircularProgressIndicator(color: Colors.white),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Analyzing…',
-                            style: GoogleFonts.inter(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (scanState.hasError)
-                  Expanded(child: _buildScanError(scanState.error!)),
-                if (scanState.value != null && !scanState.isLoading)
-                  _buildResultCard(context, ref, scanState.value!),
+                Expanded(child: _buildMiddlePane(scanState)),
                 _buildBottomControls(scanState),
               ],
             ),
@@ -637,16 +647,57 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
     );
   }
 
+  Widget _buildMiddlePane(AsyncValue<FoodScanResult?> scanState) {
+    if (scanState.isLoading) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: Colors.white),
+            const SizedBox(height: 16),
+                          Text(
+                            'Photo saved — you can put the phone down.\nAI is detecting the food…',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.inter(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+          ],
+        ),
+      );
+    }
+
+    if (scanState.hasError) {
+      return _buildScanError(scanState.error!);
+    }
+
+    final result = scanState.valueOrNull;
+    if (result != null) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: _buildResultCard(context, ref, result),
+      );
+    }
+
+    return _buildScannerFrame();
+  }
+
   Widget _buildTopBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildGlassButton(Icons.arrow_back_ios_new, () {
-            final hasResult = ref.read(foodScannerProvider).value != null;
-            if (hasResult) {
+          _buildGlassButton(Icons.arrow_back_ios_new, () async {
+            final state = ref.read(foodScannerProvider);
+            final hasScanUi = state.hasError ||
+                state.valueOrNull != null ||
+                _capturedImagePath != null;
+            if (hasScanUi) {
               ref.read(foodScannerProvider.notifier).clearScan();
+              await _resumeLivePreview();
             } else {
               Navigator.pop(context);
             }
@@ -700,36 +751,90 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
   }
 
   Widget _buildScannerFrame() {
-    return Center(
-      child: SizedBox(
-        width: 260,
-        height: 260,
-        child: Stack(
-          children: [
-            Align(
-              alignment: Alignment.center,
-              child: Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      blurRadius: 10,
-                    ),
-                  ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxSide = constraints.maxWidth < constraints.maxHeight
+            ? constraints.maxWidth
+            : constraints.maxHeight;
+        // Leave room for the two hint lines under the viewfinder.
+        final frameSize = (maxSide - 72).clamp(140.0, 260.0);
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: frameSize,
+                  height: frameSize,
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      _buildCornerBracket(
+                        Alignment.topLeft,
+                        top: true,
+                        left: true,
+                      ),
+                      _buildCornerBracket(
+                        Alignment.topRight,
+                        top: true,
+                        left: false,
+                      ),
+                      _buildCornerBracket(
+                        Alignment.bottomLeft,
+                        top: false,
+                        left: true,
+                      ),
+                      _buildCornerBracket(
+                        Alignment.bottomRight,
+                        top: false,
+                        left: false,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                Text(
+                  'Frame your meal, then tap the shutter',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'We photograph the plate once, then AI detects the food.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
-            _buildCornerBracket(Alignment.topLeft, top: true, left: true),
-            _buildCornerBracket(Alignment.topRight, top: true, left: false),
-            _buildCornerBracket(Alignment.bottomLeft, top: false, left: true),
-            _buildCornerBracket(Alignment.bottomRight, top: false, left: false),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -780,78 +885,77 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
             ? error
             : "This doesn't look like food. Point your camera at a meal on a plate and scan again.");
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 28),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.no_food_outlined,
-                color: Colors.white.withValues(alpha: 0.9),
-                size: 36,
-              ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 20),
+            child: Icon(
+              Icons.no_food_outlined,
+              color: Colors.white.withValues(alpha: 0.9),
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            detail,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              color: Colors.white.withValues(alpha: 0.82),
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          if (notFood) ...[
+            const SizedBox(height: 8),
             Text(
-              title,
+              'Tip: fill the frame with the plate, use daylight if you can, then tap the shutter once.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                height: 1.3,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(
-                color: Colors.white.withValues(alpha: 0.82),
-                fontSize: 14,
-                height: 1.5,
-              ),
-            ),
-            if (notFood) ...[
-              const SizedBox(height: 10),
-              Text(
-                'Tip: hold the phone steady, use daylight if you can, and fill the frame with the plate.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 12,
-                  height: 1.45,
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: () {
-                ref.read(foodScannerProvider.notifier).clearScan();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: Colors.white.withValues(alpha: 0.15),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 14,
-                ),
-              ),
-              child: Text(
-                'Scan a meal',
-                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                color: Colors.white.withValues(alpha: 0.55),
+                fontSize: 12,
+                height: 1.4,
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 18),
+          TextButton(
+            onPressed: () async {
+              ref.read(foodScannerProvider.notifier).clearScan();
+              await _resumeLivePreview();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.white.withValues(alpha: 0.15),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 28,
+                vertical: 12,
+              ),
+            ),
+            child: Text(
+              'Scan a meal',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1235,9 +1339,10 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
     final isScanning = scanState.isLoading;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 40, left: 32, right: 32),
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           IconButton(
             icon: const Icon(
@@ -1249,40 +1354,42 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
           ),
           GestureDetector(
             onTap: isScanning ? null : _captureAndScan,
-            child: Container(
-              width: 72,
-              height: 72,
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  width: 3,
-                ),
-              ),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                padding: const EdgeInsets.all(2),
-                child: Container(
-                  decoration: BoxDecoration(color: slate900, shape: BoxShape.circle),
-                  child: Center(
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          width: 2,
-                        ),
-                      ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 68,
+                  height: 68,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      width: 3,
+                    ),
+                  ),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.camera_alt_rounded,
+                      color: slate900,
+                      size: 28,
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 6),
+                Text(
+                  isScanning ? 'Analyzing…' : 'Take photo',
+                  style: GoogleFonts.inter(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
           IconButton(

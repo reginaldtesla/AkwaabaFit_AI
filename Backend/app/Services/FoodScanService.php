@@ -515,14 +515,18 @@ If there is no food (people, furniture, packaging without food, empty plate), re
 {"foods":[]}
 
 Otherwise return JSON only:
-{"foods":[{"name":"jollof","confidence":0.9}]}
+{"foods":[{"name":"plantain","confidence":0.9},{"name":"kontomire","confidence":0.85}]}
 
 Rules:
 - "name" MUST be one of these exact catalog ids: {$allowed}
-- List every distinct food visible on the plate (up to 5). Mixed plates are common (e.g. banku + okro + tilapia, waakye + shito + chicken).
-- Prefer Ghanaian dish names over Western substitutes (banku is not dumpling; kenkey is not corn bread; fufu is not mashed potato; waakye is not rice and beans generically).
+- List every distinct food visible on the plate (up to 5). Mixed plates are common
+  (e.g. plantain + kontomire, banku + okro + tilapia, waakye + shito + chicken, ampesi + stew).
+- Boiled or fried yellow plantain fingers → "plantain". Leafy green stew (kontomire / palava) → "kontomire".
+- Prefer Ghanaian dish names over Western substitutes (banku is not dumpling; kenkey is not corn bread;
+  fufu is not mashed potato; kontomire is not generic spinach; plantain is not banana).
+- Dim indoor chop-bar photos still count as food when a plate of Ghanaian food is visible.
 - confidence is 0-1 how sure you are that item is present.
-- Do not invent foods that are not visible.
+- Do not invent foods that are not visible. Never return an empty foods list when a plated meal is clearly visible.
 PROMPT;
     }
 
@@ -545,14 +549,8 @@ PROMPT;
             }
 
             $key = Str::lower(preg_replace('/\s+/', ' ', $raw) ?? $raw);
-            $className = $mergedAliases[$key] ?? Str::slug($key, '-');
-
-            // Accept exact catalog ids returned by Gemini closed vocabulary.
-            if (! isset($allowed[$className]) && isset($allowed[$key])) {
-                $className = $key;
-            }
-
-            if ($className === '' || ! isset($allowed[$className]) || isset($seen[$className])) {
+            $className = $this->resolveClassName($key, $mergedAliases, $allowed);
+            if ($className === null || isset($seen[$className])) {
                 continue;
             }
 
@@ -573,6 +571,62 @@ PROMPT;
         usort($out, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
 
         return array_slice($out, 0, 5);
+    }
+
+    /**
+     * @param  array<string, string>  $aliases
+     * @param  array<string, int>  $allowed
+     */
+    private function resolveClassName(string $key, array $aliases, array $allowed): ?string
+    {
+        if (isset($aliases[$key]) && isset($allowed[$aliases[$key]])) {
+            return $aliases[$key];
+        }
+        if (isset($allowed[$key])) {
+            return $key;
+        }
+
+        $slug = Str::slug($key, '-');
+        if (isset($allowed[$slug])) {
+            return $slug;
+        }
+
+        // Substring fallbacks for HF/Gemini free-text that miss exact aliases.
+        $needles = [
+            'kontomire' => 'kontomire',
+            'palava' => 'kontomire',
+            'palaver' => 'kontomire',
+            'plaintain' => 'plantain',
+            'plantain' => 'plantain',
+            'kelewele' => 'kelewele',
+            'tatale' => 'kelewele',
+            'ampesi' => 'yam',
+            'jollof' => 'jollof',
+            'waakye' => 'waakye',
+            'wakye' => 'waakye',
+            'banku' => 'banku',
+            'kenkey' => 'kenkey',
+            'fufu' => 'fufu',
+            'okro' => 'okro',
+            'okra' => 'okro',
+            'groundnut' => 'groundnut-soup',
+            'palmnut' => 'palmnut-soup',
+            'palm nut' => 'palmnut-soup',
+            'shito' => 'shito',
+            'tilapia' => 'tilapia',
+            'koose' => 'koose',
+            'kose' => 'koose',
+            'red red' => 'beans',
+            'gobe' => 'beans',
+        ];
+
+        foreach ($needles as $needle => $className) {
+            if (str_contains($key, $needle) && isset($allowed[$className])) {
+                return $className;
+            }
+        }
+
+        return null;
     }
 
     /**

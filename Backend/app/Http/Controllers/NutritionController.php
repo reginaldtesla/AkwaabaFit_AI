@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FoodNutritionItem;
 use App\Models\MealLog;
+use App\Models\User;
 use App\Services\DietitianAdviceService;
 use App\Services\FoodScanService;
 use App\Support\HealthProfileOptions;
@@ -187,13 +188,13 @@ class NutritionController extends Controller
             report($e);
 
             return response()->json([
-                'status' => 'success',
-                'not_food' => true,
+                'status' => 'error',
+                'not_food' => false,
                 'provider' => 'hybrid',
                 'strategy' => 'error',
                 'detections' => [],
-                'message' => "This doesn't look like food. Point your camera at a meal on a plate and scan again.",
-            ]);
+                'message' => 'Scan service failed. Check your connection and try again.',
+            ], 503);
         }
 
         if ($result['detections'] === []) {
@@ -203,7 +204,7 @@ class NutritionController extends Controller
                 'provider' => $result['provider'],
                 'strategy' => $result['strategy'],
                 'detections' => [],
-                'message' => "This doesn't look like food. Point your camera at a meal on a plate and scan again.",
+                'message' => "We couldn't identify the food. Try a brighter photo with the whole plate in frame, or log the meal manually.",
             ]);
         }
 
@@ -341,7 +342,7 @@ class NutritionController extends Controller
     /**
      * @return array{remaining_kcal: int, protein_gap: int}
      */
-    private function todayNutritionGaps(\App\Models\User $user): array
+    private function todayNutritionGaps(User $user): array
     {
         $today = MealLog::query()
             ->where('user_id', $user->id)

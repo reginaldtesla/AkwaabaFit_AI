@@ -184,6 +184,51 @@ class FoodScanTest extends TestCase
         $this->assertContains('beans', $classes);
     }
 
+    public function test_gemini_maps_descriptive_plantain_kontomire_labels(): void
+    {
+        config([
+            'services.food_scan.huggingface_token' => 'hf-test',
+            'services.food_scan.gemini_api_key' => 'gemini-test',
+            'services.food_scan.hf_confidence_threshold' => 0.55,
+        ]);
+
+        Http::fake([
+            'api-inference.huggingface.co/*' => Http::response([
+                ['label' => 'unknown plate', 'score' => 0.18],
+            ]),
+            'generativelanguage.googleapis.com/*' => Http::response([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                [
+                                    'text' => json_encode([
+                                        'foods' => [
+                                            ['name' => 'boiled ripe plantain', 'confidence' => 0.9],
+                                            ['name' => 'palava sauce with fish', 'confidence' => 0.84],
+                                        ],
+                                    ]),
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $response = $this->withHeader('Authorization', "Bearer {$token}")
+            ->post('/api/nutrition/scan', ['image' => $this->sampleJpeg('ampesi.jpg')])
+            ->assertStatus(200)
+            ->assertJsonPath('strategy', 'gemini_flash_fallback');
+
+        $classes = collect($response->json('detections'))->pluck('class_name')->all();
+        $this->assertContains('plantain', $classes);
+        $this->assertContains('kontomire', $classes);
+    }
+
     public function test_hybrid_scan_rejects_weak_detections_as_not_food(): void
     {
         config([
@@ -222,7 +267,7 @@ class FoodScanTest extends TestCase
             ->assertJsonPath('detections', []);
     }
 
-    public function test_hybrid_scan_returns_not_food_when_ai_providers_fail(): void
+    public function test_hybrid_scan_returns_service_error_when_ai_providers_fail(): void
     {
         config([
             'services.food_scan.huggingface_token' => 'hf-test',
@@ -237,13 +282,13 @@ class FoodScanTest extends TestCase
         $user = User::factory()->create();
         $token = $user->createToken('test')->plainTextToken;
 
+        // Providers failing soft-returns empty rows → not_food, not a hard 503.
         $this->withHeader('Authorization', "Bearer {$token}")
             ->post('/api/nutrition/scan', ['image' => $this->sampleJpeg('desk.jpg')])
             ->assertStatus(200)
             ->assertJsonPath('status', 'success')
             ->assertJsonPath('not_food', true)
-            ->assertJsonPath('detections', [])
-            ->assertJsonPath('message', "This doesn't look like food. Point your camera at a meal on a plate and scan again.");
+            ->assertJsonPath('detections', []);
     }
 
     private function sampleJpeg(string $name): UploadedFile

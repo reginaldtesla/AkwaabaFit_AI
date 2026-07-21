@@ -116,7 +116,7 @@ class FoodScanApiService {
     }
   }
 
-  String _messageFromDio(DioException e) {
+    String _messageFromDio(DioException e) {
     final data = e.response?.data;
     if (data is Map) {
       final msg = data['message']?.toString();
@@ -134,9 +134,9 @@ class FoodScanApiService {
     }
     final code = e.response?.statusCode;
     if (code == 503 || code == 502) {
-      return 'Scan service is busy. Wait a moment and try again.';
+      return 'Scan service is busy or unavailable. Wait a moment and try again.';
     }
-    return "This doesn't look like food. Point your camera at a meal on a plate and scan again.";
+    return 'Could not scan this photo. Try again or log the meal manually.';
   }
 
   Future<({
