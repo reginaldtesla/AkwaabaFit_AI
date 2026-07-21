@@ -82,10 +82,12 @@ class ProfileController extends Controller
 
         $user->update(['avatar_url' => $url]);
 
+        LeaderboardCache::forgetCurrent();
+
         return response()->json([
             'status' => 'success',
             'avatarUrl' => $url,
-            'user' => $user,
+            'user' => $user->fresh(),
         ]);
     }
 }

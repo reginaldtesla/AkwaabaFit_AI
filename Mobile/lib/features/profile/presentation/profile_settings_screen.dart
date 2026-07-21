@@ -363,6 +363,8 @@ class ProfileSettingsScreen extends ConsumerWidget {
 
                     if (url != null) {
                       ref.invalidate(avatarUrlProvider);
+                      ref.invalidate(dashboardDataProvider);
+                      ref.invalidate(leaderboardProvider);
                       await ref.read(profileProvider.notifier).reloadFromRepo();
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

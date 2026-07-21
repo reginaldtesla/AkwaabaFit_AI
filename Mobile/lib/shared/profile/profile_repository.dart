@@ -140,6 +140,16 @@ class ProfileRepository {
         'avatarUrl': avatarUrl,
       });
 
+      // Keep dashboard header in sync even before the next /dashboard fetch.
+      final dash = await db.getDashboardCache();
+      if (dash != null) {
+        await db.putDashboardCache(<String, dynamic>{
+          ...dash,
+          'avatarUrl': avatarUrl,
+          'avatar_url': avatarUrl,
+        });
+      }
+
       return avatarUrl;
     } catch (_) {
       return null;
