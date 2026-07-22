@@ -202,14 +202,65 @@ class LocalNotificationService {
     );
   }
 
+  Future<void> showAdminBroadcast({
+    required int announcementId,
+    required String title,
+    required String body,
+  }) async {
+    await ensureInitialized();
+
+    final safeTitle = title.trim().isEmpty ? 'AkwaabaFit' : title.trim();
+    final safeBody = body.trim();
+    if (safeBody.isEmpty) return;
+
+    final inboxId = 'admin_$announcementId';
+    try {
+      final inbox = await NotificationInboxService.getInstance();
+      if (inbox.items.any((n) => n.id == inboxId)) return;
+    } catch (_) {}
+
+    final permissionGranted = await _requestNotificationPermission();
+
+    await _recordInbox(
+      title: safeTitle,
+      body: safeBody,
+      category: 'push',
+      id: inboxId,
+    );
+
+    if (!permissionGranted) return;
+
+    await _plugin.show(
+      id: 900000 + (announcementId % 100000),
+      title: safeTitle,
+      body: safeBody,
+      notificationDetails: NotificationDetails(
+        android: AkwaabaAndroidNotifications.details(
+          channelId: 'akwaaba_admin_broadcast',
+          channelName: 'AkwaabaFit announcements',
+          channelDescription: 'Messages from AkwaabaFit admin',
+          expandedBody: safeBody,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  }
+
   Future<void> _recordInbox({
     required String title,
     required String body,
     required String category,
+    String? id,
   }) async {
     try {
       final inbox = await NotificationInboxService.getInstance();
-      await inbox.add(title: title, body: body, category: category);
+      await inbox.add(
+        title: title,
+        body: body,
+        category: category,
+        id: id,
+      );
     } catch (_) {}
   }
 

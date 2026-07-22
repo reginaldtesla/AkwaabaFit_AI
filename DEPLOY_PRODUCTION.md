@@ -75,7 +75,23 @@ On first sign-up, users complete **two steps**:
 
 This powers condition-aware coaching, Ghana step goals, water targets, and meal-time notifications.
 
-## 5. New API endpoints
+## 5. Admin broadcast notifications
+
+Staff can message every user from **https://api.tesnet.xyz/admin/broadcast** (after signing in with `ADMIN_PASSWORD`).
+
+- Users see the message in the **app notification bell**
+- The phone also shows a **system notification** when the app syncs (on open/resume, and periodically in the background step service)
+
+For push while the app is fully closed, add Firebase:
+
+```env
+FIREBASE_CREDENTIALS=/absolute/path/to/firebase-service-account.json
+FIREBASE_PROJECT_ID=your-firebase-project-id
+```
+
+Then install `google-services.json` in the Android app and register FCM device tokens (API: `POST /api/device-tokens`). Until then, sync-based delivery still covers inbox + tray for active users.
+
+## 6. New API endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|

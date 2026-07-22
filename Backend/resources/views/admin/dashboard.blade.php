@@ -109,10 +109,13 @@
       <span>AkwaabaFit Admin</span>
     </div>
     <div class="meta">Updated {{ $generatedAt->timezone(config('app.timezone'))->format('M j, Y g:i A') }}</div>
-    <form method="post" action="{{ route('admin.logout') }}">
-      @csrf
-      <button class="logout" type="submit">Sign out</button>
-    </form>
+    <div style="display:flex;gap:0.75rem;align-items:center;">
+      <a href="{{ route('admin.broadcast') }}" style="color:#14532d;font-weight:600;text-decoration:none;">Broadcast</a>
+      <form method="post" action="{{ route('admin.logout') }}">
+        @csrf
+        <button class="logout" type="submit">Sign out</button>
+      </form>
+    </div>
   </header>
 
   <main class="wrap">

@@ -2,10 +2,12 @@
 
 use App\Http\Controllers\AccountabilityController;
 use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\AppVersionController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DailyStepLogController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeviceTokenController;
 use App\Http\Controllers\HealthOptionsController;
 use App\Http\Controllers\HydrationController;
 use App\Http\Controllers\NutritionController;
@@ -67,4 +69,8 @@ Route::middleware(['auth:sanctum', RecordUserLastSeen::class])->group(function (
     Route::get('/accountability', [AccountabilityController::class, 'show']);
     Route::post('/accountability/link', [AccountabilityController::class, 'link']);
     Route::delete('/accountability/partner', [AccountabilityController::class, 'unlink']);
+
+    Route::get('/announcements', [AnnouncementController::class, 'index']);
+    Route::post('/device-tokens', [DeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [DeviceTokenController::class, 'destroy']);
 });

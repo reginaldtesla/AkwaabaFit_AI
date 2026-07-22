@@ -13,6 +13,7 @@ import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
 import 'package:mobile/shared/fitness/step_goal_achievement_notifier.dart';
 import 'package:mobile/shared/fitness/idle_movement_nudge_notifier.dart';
 import 'package:mobile/shared/fitness/today_steps_from_sensor.dart';
+import 'package:mobile/shared/notifications/admin_announcement_sync.dart';
 
 class BackgroundStepService {
   /// Low-importance channel: ongoing tracking without heads-up popups.
@@ -240,6 +241,9 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
       await IdleMovementNudgeNotifier.checkIdle(
         stepsOverride: latestTodaySteps,
       );
+      try {
+        await AdminAnnouncementSync().sync();
+      } catch (_) {}
     });
   }
 

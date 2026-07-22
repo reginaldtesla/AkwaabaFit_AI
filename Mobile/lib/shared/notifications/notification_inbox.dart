@@ -105,13 +105,21 @@ class NotificationInboxService {
     required String title,
     required String body,
     String category = 'general',
+    String? id,
   }) async {
     final trimmedTitle = title.trim();
     final trimmedBody = body.trim();
     if (trimmedTitle.isEmpty && trimmedBody.isEmpty) return;
 
+    final entryId = (id ?? '').trim().isNotEmpty
+        ? id!.trim()
+        : DateTime.now().microsecondsSinceEpoch.toString();
+
+    // Dedupe by stable id (admin announcement ids).
+    if (items.any((n) => n.id == entryId)) return;
+
     final entry = AppNotificationItem(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: entryId,
       title: trimmedTitle.isEmpty ? 'Notification' : trimmedTitle,
       body: trimmedBody,
       createdAt: DateTime.now(),

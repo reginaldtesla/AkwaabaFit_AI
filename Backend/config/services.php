@@ -68,6 +68,12 @@ return [
         'gemini_model' => env('FOOD_SCAN_GEMINI_MODEL', 'gemini-2.0-flash'),
     ],
 
+    'firebase' => [
+        /** Absolute path to Firebase service-account JSON (FCM HTTP v1). */
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+    ],
+
     /*
     | Google Sign-In (mobile ID token verification).
     | Add the Web client ID (used as serverClientId) and optionally Android/iOS client IDs.

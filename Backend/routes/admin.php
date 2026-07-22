@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AuthController;
+use App\Http\Controllers\Admin\BroadcastController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Middleware\EnsureAdminSession;
 use Illuminate\Support\Facades\Route;
@@ -11,6 +12,8 @@ Route::prefix('admin')->group(function () {
 
     Route::middleware(EnsureAdminSession::class)->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
+        Route::get('/broadcast', [BroadcastController::class, 'create'])->name('admin.broadcast');
+        Route::post('/broadcast', [BroadcastController::class, 'store'])->name('admin.broadcast.store');
         Route::post('/logout', [AuthController::class, 'logout'])->name('admin.logout');
     });
 });
