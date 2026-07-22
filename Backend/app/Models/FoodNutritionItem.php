@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MealCopy;
 use Illuminate\Database\Eloquent\Model;
 
 class FoodNutritionItem extends Model
@@ -33,7 +34,7 @@ class FoodNutritionItem extends Model
         return [
             'className' => $this->class_name,
             'preparationType' => $this->preparation_type,
-            'displayName' => $this->display_name,
+            'displayName' => MealCopy::friendlyName($this->display_name),
             'calories' => (int) $this->calories,
             'proteinG' => (int) $this->protein_g,
             'carbsG' => (int) $this->carbs_g,
@@ -41,7 +42,7 @@ class FoodNutritionItem extends Model
             'ironMg' => (float) $this->iron_mg,
             'folateMcg' => (int) $this->folate_mcg,
             'safetyStatus' => $this->safety_status,
-            'insightMessage' => $this->insight_message,
+            'insightMessage' => MealCopy::friendlyInsight($this->insight_message),
             'portionLabel' => $this->portion_label,
         ];
     }

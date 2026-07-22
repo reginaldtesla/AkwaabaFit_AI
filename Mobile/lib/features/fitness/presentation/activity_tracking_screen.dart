@@ -10,9 +10,9 @@ import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
+import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/config/app_config.dart';
@@ -785,9 +785,9 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
         return;
       case AppTab.stats:
         return;
-      case AppTab.safety:
+      case AppTab.dietitian:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
         );
         return;
       case AppTab.profile:

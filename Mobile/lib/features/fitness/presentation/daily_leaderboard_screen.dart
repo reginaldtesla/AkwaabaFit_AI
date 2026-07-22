@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
+import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/fitness/leaderboard_provider.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
@@ -250,9 +250,9 @@ class _DailyLeaderboardScreenState
           MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
         );
         return;
-      case AppTab.safety:
+      case AppTab.dietitian:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
         );
         return;
       case AppTab.profile:

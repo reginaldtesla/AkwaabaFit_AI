@@ -268,7 +268,7 @@ class DietitianAdvice {
           category: 'activity',
           title: 'Move a bit more today',
           detail:
-              '$todaySteps of $stepGoal steps. A short walk before supper helps balance chop bar meals.',
+              '$todaySteps of $stepGoal steps. A short walk before supper helps balance today\'s meals.',
         ));
       }
     }
@@ -378,7 +378,7 @@ class MealDietitianAdvice {
           'Kenkey and fried fish with shito is the classic evening plate.';
     } else if (slug.contains('waakye')) {
       insight =
-          'Waakye chop: shito, gari, egg, plantain—pick your sides like at the vendor.';
+          'Waakye with shito, gari, egg, or plantain—choose the sides that fit your day.';
     } else if (slug.contains('kelewele') || slug.contains('fried')) {
       insight =
           'Kelewele and fried plantain are side chops—pair with rice, jollof, or gobe.';
@@ -387,7 +387,7 @@ class MealDietitianAdvice {
           'Hausa koko fits morning or afternoon—with koose or bofrot, not as a late-night meal.';
     } else if (calories >= 700) {
       insight =
-          '$name is a full chop bar portion—hydrate and go lighter on starch next time.';
+          '$name is a full portion—hydrate and go lighter on starch next time.';
     } else {
       insight =
           'Good logging $name. Consistent tracking helps me tune your Ghanaian meal plan.';

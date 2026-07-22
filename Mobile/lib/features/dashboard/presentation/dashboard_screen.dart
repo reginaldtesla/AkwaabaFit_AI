@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
@@ -116,8 +116,31 @@ class DashboardData {
   });
 
   DietitianAdvice resolveDietitianAdvice() {
+    final metricsNeedBody = weightKg != null &&
+        heightCm != null &&
+        weightKg! > 0 &&
+        heightCm! > 0 &&
+        (dietitianAdvice?.bodyMetrics == null ||
+            dietitianAdvice!.bodyMetrics!.weightKg == null ||
+            dietitianAdvice!.bodyMetrics!.heightCm == null ||
+            dietitianAdvice!.bodyMetrics!.bmi == null);
+
+    if (dietitianAdvice != null && !metricsNeedBody) {
+      return dietitianAdvice!;
+    }
+
+    final metrics = DietitianBodyMetrics.fromDashboardContext(
+      goal: goal,
+      weightKg: weightKg,
+      heightCm: heightCm,
+      todaySteps: currentSteps,
+      stepGoal: stepGoal,
+      burnedKcal: burnedKcal,
+      consumedKcal: consumedKcal,
+      dailyCaloriesTarget: dailyCaloriesTarget,
+    );
+
     if (dietitianAdvice != null) {
-      if (dietitianAdvice!.bodyMetrics != null) return dietitianAdvice!;
       return DietitianAdvice(
         headline: dietitianAdvice!.headline,
         summary: dietitianAdvice!.summary,
@@ -125,19 +148,11 @@ class DashboardData {
         nextMeal: dietitianAdvice!.nextMeal,
         hydrationTip: dietitianAdvice!.hydrationTip,
         portionTip: dietitianAdvice!.portionTip,
-        bodyMetrics: DietitianBodyMetrics.fromDashboardContext(
-          goal: goal,
-          weightKg: weightKg,
-          heightCm: heightCm,
-          todaySteps: currentSteps,
-          stepGoal: stepGoal,
-          burnedKcal: burnedKcal,
-          consumedKcal: consumedKcal,
-          dailyCaloriesTarget: dailyCaloriesTarget,
-        ),
+        bodyMetrics: metrics,
         source: dietitianAdvice!.source,
       );
     }
+
     return DietitianAdvice.fromDashboardContext(
       userName: userName,
       goal: goal,
@@ -161,36 +176,60 @@ class DashboardData {
     int? currentSteps,
     int? stepGoal,
     int? dailyCaloriesTarget,
+    int? burnedKcal,
+    int? netKcal,
+    int? consumedKcal,
+    int? proteinG,
+    int? carbsG,
+    int? fatG,
+    bool? macrosEstimated,
+    double? weightKg,
+    double? heightCm,
+    int? waterTotalMl,
+    int? waterGoalMl,
+    DietitianAdvice? dietitianAdvice,
+    String? weatherMain,
+    String? weatherDescription,
+    String? alertTitle,
+    String? alertMessage,
+    double? tempCelsius,
+    String? location,
+    int? airQualityAqi,
   }) {
     return DashboardData(
       userName: userName,
       avatarUrl: avatarUrl,
       goal: goal,
-      netKcal: netKcal,
-      consumedKcal: consumedKcal,
-      burnedKcal: burnedKcal,
-      tempCelsius: tempCelsius,
-      location: location,
-      weatherMain: weatherMain,
-      weatherDescription: weatherDescription,
-      alertTitle: alertTitle,
-      alertMessage: alertMessage,
+      netKcal: netKcal ?? this.netKcal,
+      consumedKcal: consumedKcal ?? this.consumedKcal,
+      burnedKcal: burnedKcal ?? this.burnedKcal,
+      tempCelsius: tempCelsius ?? this.tempCelsius,
+      location: location ?? this.location,
+      weatherMain: weatherMain ?? this.weatherMain,
+      weatherDescription: weatherDescription ?? this.weatherDescription,
+      alertTitle: alertTitle ?? this.alertTitle,
+      alertMessage: alertMessage ?? this.alertMessage,
       currentSteps: currentSteps ?? this.currentSteps,
       stepGoal: stepGoal ?? this.stepGoal,
       dailyCaloriesTarget: dailyCaloriesTarget ?? this.dailyCaloriesTarget,
-      proteinG: proteinG,
-      carbsG: carbsG,
-      fatG: fatG,
+      proteinG: proteinG ?? this.proteinG,
+      carbsG: carbsG ?? this.carbsG,
+      fatG: fatG ?? this.fatG,
       targetProteinG: targetProteinG,
       targetCarbsG: targetCarbsG,
       targetFatG: targetFatG,
-      airQualityAqi: airQualityAqi,
+      airQualityAqi: airQualityAqi ?? this.airQualityAqi,
       workoutPreferredTime: workoutPreferredTime,
       workoutDaysPerWeek: workoutDaysPerWeek,
       mealsLoggedToday: mealsLoggedToday,
       mealsLogged7Days: mealsLogged7Days,
       fromOfflineCache: fromOfflineCache,
-      macrosEstimated: macrosEstimated,
+      macrosEstimated: macrosEstimated ?? this.macrosEstimated,
+      weightKg: weightKg ?? this.weightKg,
+      heightCm: heightCm ?? this.heightCm,
+      waterTotalMl: waterTotalMl ?? this.waterTotalMl,
+      waterGoalMl: waterGoalMl ?? this.waterGoalMl,
+      dietitianAdvice: dietitianAdvice ?? this.dietitianAdvice,
     );
   }
 
@@ -281,34 +320,12 @@ class DashboardData {
     final consumed =
         pendingKcal > 0 ? consumedKcal + pendingKcal : consumedKcal;
     final net = consumed - burnedKcal;
-    return DashboardData(
-      userName: userName,
-      avatarUrl: avatarUrl,
-      goal: goal,
+    return copyWith(
       netKcal: net,
       consumedKcal: consumed,
-      burnedKcal: burnedKcal,
-      tempCelsius: tempCelsius,
-      location: location,
-      weatherMain: weatherMain,
-      weatherDescription: weatherDescription,
-      alertTitle: alertTitle,
-      alertMessage: alertMessage,
-      currentSteps: currentSteps,
-      stepGoal: stepGoal,
-      dailyCaloriesTarget: dailyCaloriesTarget,
       proteinG: proteinG + pendingProteinG,
       carbsG: carbsG + pendingCarbsG,
       fatG: fatG + pendingFatG,
-      targetProteinG: targetProteinG,
-      targetCarbsG: targetCarbsG,
-      targetFatG: targetFatG,
-      airQualityAqi: airQualityAqi,
-      workoutPreferredTime: workoutPreferredTime,
-      workoutDaysPerWeek: workoutDaysPerWeek,
-      mealsLoggedToday: mealsLoggedToday,
-      mealsLogged7Days: mealsLogged7Days,
-      fromOfflineCache: fromOfflineCache,
       macrosEstimated: macrosEstimated &&
           pendingProteinG <= 0 &&
           pendingCarbsG <= 0 &&
@@ -336,34 +353,10 @@ DashboardData _normalizeDashboardMacrosToConsumedCalories(DashboardData data) {
 
   final aligned =
       _alignMacroGramsToKcal(data.consumedKcal, p, c, f);
-  return DashboardData(
-    userName: data.userName,
-    avatarUrl: data.avatarUrl,
-    goal: data.goal,
-    netKcal: data.netKcal,
-    consumedKcal: data.consumedKcal,
-    burnedKcal: data.burnedKcal,
-    tempCelsius: data.tempCelsius,
-    location: data.location,
-    weatherMain: data.weatherMain,
-    weatherDescription: data.weatherDescription,
-    alertTitle: data.alertTitle,
-    alertMessage: data.alertMessage,
-    currentSteps: data.currentSteps,
-    stepGoal: data.stepGoal,
-    dailyCaloriesTarget: data.dailyCaloriesTarget,
+  return data.copyWith(
     proteinG: aligned.p,
     carbsG: aligned.c,
     fatG: aligned.f,
-    targetProteinG: data.targetProteinG,
-    targetCarbsG: data.targetCarbsG,
-    targetFatG: data.targetFatG,
-    airQualityAqi: data.airQualityAqi,
-    workoutPreferredTime: data.workoutPreferredTime,
-    workoutDaysPerWeek: data.workoutDaysPerWeek,
-    mealsLoggedToday: data.mealsLoggedToday,
-    mealsLogged7Days: data.mealsLogged7Days,
-    fromOfflineCache: data.fromOfflineCache,
     macrosEstimated: true,
   );
 }
@@ -443,34 +436,10 @@ DashboardData _estimateMacrosWhenNoGrams(DashboardData data) {
     f = (data.consumedKcal * 0.25 / 9).round().clamp(0, 400);
   }
 
-  return DashboardData(
-    userName: data.userName,
-    avatarUrl: data.avatarUrl,
-    goal: data.goal,
-    netKcal: data.netKcal,
-    consumedKcal: data.consumedKcal,
-    burnedKcal: data.burnedKcal,
-    tempCelsius: data.tempCelsius,
-    location: data.location,
-    weatherMain: data.weatherMain,
-    weatherDescription: data.weatherDescription,
-    alertTitle: data.alertTitle,
-    alertMessage: data.alertMessage,
-    currentSteps: data.currentSteps,
-    stepGoal: data.stepGoal,
-    dailyCaloriesTarget: data.dailyCaloriesTarget,
+  return data.copyWith(
     proteinG: p,
     carbsG: c,
     fatG: f,
-    targetProteinG: data.targetProteinG,
-    targetCarbsG: data.targetCarbsG,
-    targetFatG: data.targetFatG,
-    airQualityAqi: data.airQualityAqi,
-    workoutPreferredTime: data.workoutPreferredTime,
-    workoutDaysPerWeek: data.workoutDaysPerWeek,
-    mealsLoggedToday: data.mealsLoggedToday,
-    mealsLogged7Days: data.mealsLogged7Days,
-    fromOfflineCache: data.fromOfflineCache,
     macrosEstimated: true,
   );
 }
@@ -534,34 +503,10 @@ Future<DashboardData> _mergePendingNutritionIntoDashboard(
 
   if (!useLocalMacroTotals) return merged;
 
-  return DashboardData(
-    userName: merged.userName,
-    avatarUrl: merged.avatarUrl,
-    goal: merged.goal,
-    netKcal: merged.netKcal,
-    consumedKcal: merged.consumedKcal,
-    burnedKcal: merged.burnedKcal,
-    tempCelsius: merged.tempCelsius,
-    location: merged.location,
-    weatherMain: merged.weatherMain,
-    weatherDescription: merged.weatherDescription,
-    alertTitle: merged.alertTitle,
-    alertMessage: merged.alertMessage,
-    currentSteps: merged.currentSteps,
-    stepGoal: merged.stepGoal,
-    dailyCaloriesTarget: merged.dailyCaloriesTarget,
+  return merged.copyWith(
     proteinG: localDayTotals.proteinG,
     carbsG: localDayTotals.carbsG,
     fatG: localDayTotals.fatG,
-    targetProteinG: merged.targetProteinG,
-    targetCarbsG: merged.targetCarbsG,
-    targetFatG: merged.targetFatG,
-    airQualityAqi: merged.airQualityAqi,
-    workoutPreferredTime: merged.workoutPreferredTime,
-    workoutDaysPerWeek: merged.workoutDaysPerWeek,
-    mealsLoggedToday: merged.mealsLoggedToday,
-    mealsLogged7Days: merged.mealsLogged7Days,
-    fromOfflineCache: merged.fromOfflineCache,
     macrosEstimated: false,
   );
 }
@@ -575,38 +520,41 @@ Future<DashboardData> _applyLocalStepGoalToDashboard(
     final local = await repo.readLocalProfile();
     final v = local?['step_goal'];
     final localGoal = (v is int) ? v : int.tryParse((v ?? '').toString());
-    if (localGoal != null && localGoal > 0) {
-      return DashboardData(
-        userName: base.userName,
-        avatarUrl: base.avatarUrl,
-        goal: base.goal,
-        netKcal: base.netKcal,
-        consumedKcal: base.consumedKcal,
-        burnedKcal: base.burnedKcal,
-        tempCelsius: base.tempCelsius,
-        location: base.location,
-        weatherMain: base.weatherMain,
-        weatherDescription: base.weatherDescription,
-        alertTitle: base.alertTitle,
-        alertMessage: base.alertMessage,
-        currentSteps: base.currentSteps,
-        stepGoal: localGoal,
-        dailyCaloriesTarget: base.dailyCaloriesTarget,
-        proteinG: base.proteinG,
-        carbsG: base.carbsG,
-        fatG: base.fatG,
-        targetProteinG: base.targetProteinG,
-        targetCarbsG: base.targetCarbsG,
-        targetFatG: base.targetFatG,
-        airQualityAqi: base.airQualityAqi,
-        workoutPreferredTime: base.workoutPreferredTime,
-        workoutDaysPerWeek: base.workoutDaysPerWeek,
-        mealsLoggedToday: base.mealsLoggedToday,
-        mealsLogged7Days: base.mealsLogged7Days,
-        fromOfflineCache: base.fromOfflineCache,
-        macrosEstimated: base.macrosEstimated,
-      );
+
+    final weightRaw = local?['weight'];
+    final heightRaw = local?['height'];
+    final localWeight = weightRaw is num
+        ? weightRaw.toDouble()
+        : double.tryParse('$weightRaw');
+    final localHeight = heightRaw is num
+        ? heightRaw.toDouble()
+        : double.tryParse('$heightRaw');
+
+    final nextWeight = (base.weightKg == null || base.weightKg! <= 0) &&
+            localWeight != null &&
+            localWeight > 0
+        ? localWeight
+        : base.weightKg;
+    final nextHeight = (base.heightCm == null || base.heightCm! <= 0) &&
+            localHeight != null &&
+            localHeight > 0
+        ? localHeight
+        : base.heightCm;
+
+    final nextGoal =
+        (localGoal != null && localGoal > 0) ? localGoal : base.stepGoal;
+
+    if (nextGoal == base.stepGoal &&
+        nextWeight == base.weightKg &&
+        nextHeight == base.heightCm) {
+      return base;
     }
+
+    return base.copyWith(
+      stepGoal: nextGoal,
+      weightKg: nextWeight,
+      heightCm: nextHeight,
+    );
   } catch (_) {
     // ignore
   }
@@ -666,6 +614,15 @@ Future<DashboardData?> _pureOfflineDashboardFromSqlite(
   final wd =
       wdRaw is int ? wdRaw : int.tryParse((wdRaw ?? '').toString());
 
+  final weightRaw = profile?['weight'];
+  final heightRaw = profile?['height'];
+  final weightKg = weightRaw is num
+      ? weightRaw.toDouble()
+      : double.tryParse('$weightRaw');
+  final heightCm = heightRaw is num
+      ? heightRaw.toDouble()
+      : double.tryParse('$heightRaw');
+
   return DashboardData(
     userName: (profile?['name'] ?? 'Member').toString(),
     avatarUrl: avatarUrl,
@@ -697,6 +654,8 @@ Future<DashboardData?> _pureOfflineDashboardFromSqlite(
     mealsLogged7Days: null,
     fromOfflineCache: true,
     macrosEstimated: false,
+    weightKg: (weightKg != null && weightKg > 0) ? weightKg : null,
+    heightCm: (heightCm != null && heightCm > 0) ? heightCm : null,
   );
 }
 
@@ -1079,9 +1038,9 @@ class DashboardScreen extends ConsumerWidget {
           MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
         );
         return;
-      case AppTab.safety:
+      case AppTab.dietitian:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
         );
         return;
       case AppTab.profile:
@@ -1148,7 +1107,7 @@ class DashboardScreen extends ConsumerWidget {
                 initialGoalMl: data.waterGoalMl,
               ),
               const SizedBox(height: 14),
-              _buildDietitianCoachCard(context, data),
+              _buildSafetyHubCard(context, data),
             ],
           ),
         ),
@@ -1731,11 +1690,16 @@ class DashboardScreen extends ConsumerWidget {
     return '${v.toStringAsFixed(0)}k';
   }
 
-  Widget _buildDietitianCoachCard(BuildContext context, DashboardData data) {
-    final advice = data.resolveDietitianAdvice();
-    final preview = advice.recommendations.isNotEmpty
-        ? advice.recommendations.first.detail
-        : advice.summary;
+  Widget _buildSafetyHubCard(BuildContext context, DashboardData data) {
+    final alert = (data.alertTitle ?? '').trim();
+    final alertMsg = (data.alertMessage ?? '').trim();
+    final hasAlert = alert.isNotEmpty &&
+        alertMsg.isNotEmpty &&
+        !alert.toLowerCase().contains('no alert');
+    final preview = hasAlert
+        ? alertMsg
+        : 'Weather, air quality, and health tips for where you are.';
+    final headline = hasAlert ? alert : 'Stay safe outdoors today';
 
     return Material(
       color: Colors.transparent,
@@ -1744,15 +1708,15 @@ class DashboardScreen extends ConsumerWidget {
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => DietitianCoachScreen(advice: advice),
+              builder: (_) => const HealthSafetyHubScreen(),
             ),
           );
         },
         child: Ink(
           decoration: BoxDecoration(
-            color: const Color(0xFFECF4EC),
+            color: const Color(0xFFF3F6F8),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: primary.withValues(alpha: 0.14)),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(0, 16, 14, 16),
@@ -1762,9 +1726,9 @@ class DashboardScreen extends ConsumerWidget {
                 children: [
                   Container(
                     width: 4,
-                    decoration: BoxDecoration(
-                      color: primary,
-                      borderRadius: const BorderRadius.horizontal(
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF334155),
+                      borderRadius: BorderRadius.horizontal(
                         right: Radius.circular(4),
                       ),
                     ),
@@ -1778,7 +1742,7 @@ class DashboardScreen extends ConsumerWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                'Your Dietitian',
+                                'Safety Hub',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
@@ -1788,18 +1752,18 @@ class DashboardScreen extends ConsumerWidget {
                             ),
                             Icon(
                               Icons.chevron_right_rounded,
-                              color: primary.withValues(alpha: 0.7),
+                              color: muted.withValues(alpha: 0.9),
                               size: 22,
                             ),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          advice.headline,
+                          headline,
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: primary,
+                            color: const Color(0xFF334155),
                             height: 1.35,
                           ),
                         ),
@@ -1815,28 +1779,28 @@ class DashboardScreen extends ConsumerWidget {
                             height: 1.45,
                           ),
                         ),
-                        if (advice.nextMeal != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.75),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Next: ${advice.nextMeal!.suggestion}',
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: slate900,
-                              ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            data.location.trim().isEmpty
+                                ? 'Open for tips & environment guidance'
+                                : '${data.tempCelsius.round()}° · ${data.location}',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: slate900,
                             ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),

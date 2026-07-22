@@ -42,13 +42,13 @@ class FoodNutritionItemSeeder extends Seeder
         }
 
         $variants = [
-            ['class_name' => 'banku', 'preparation_type' => 'chop_bar', 'display_name' => 'Banku (chop bar)', 'calories' => 520, 'protein_g' => 8, 'carbs_g' => 98, 'fat_g' => 6],
+            ['class_name' => 'banku', 'preparation_type' => 'chop_bar', 'display_name' => 'Banku', 'calories' => 520, 'protein_g' => 8, 'carbs_g' => 98, 'fat_g' => 6],
             ['class_name' => 'banku', 'preparation_type' => 'home_cooked', 'display_name' => 'Banku (home)', 'calories' => 400, 'protein_g' => 7, 'carbs_g' => 82, 'fat_g' => 4],
-            ['class_name' => 'jollof', 'preparation_type' => 'chop_bar', 'display_name' => 'Jollof (chop bar)', 'calories' => 580, 'protein_g' => 14, 'carbs_g' => 78, 'fat_g' => 22],
+            ['class_name' => 'jollof', 'preparation_type' => 'chop_bar', 'display_name' => 'Jollof', 'calories' => 580, 'protein_g' => 14, 'carbs_g' => 78, 'fat_g' => 22],
             ['class_name' => 'jollof', 'preparation_type' => 'home_cooked', 'display_name' => 'Jollof (home)', 'calories' => 480, 'protein_g' => 12, 'carbs_g' => 72, 'fat_g' => 14],
-            ['class_name' => 'waakye', 'preparation_type' => 'chop_bar', 'display_name' => 'Waakye chop (vendor)', 'calories' => 720, 'protein_g' => 22, 'carbs_g' => 95, 'fat_g' => 24],
+            ['class_name' => 'waakye', 'preparation_type' => 'chop_bar', 'display_name' => 'Waakye', 'calories' => 720, 'protein_g' => 22, 'carbs_g' => 95, 'fat_g' => 24],
             ['class_name' => 'waakye', 'preparation_type' => 'home_cooked', 'display_name' => 'Waakye (home)', 'calories' => 520, 'protein_g' => 16, 'carbs_g' => 78, 'fat_g' => 12],
-            ['class_name' => 'kenkey', 'preparation_type' => 'chop_bar', 'display_name' => 'Kenkey & fish (chop bar)', 'calories' => 650, 'protein_g' => 28, 'carbs_g' => 88, 'fat_g' => 18],
+            ['class_name' => 'kenkey', 'preparation_type' => 'chop_bar', 'display_name' => 'Kenkey & fish', 'calories' => 650, 'protein_g' => 28, 'carbs_g' => 88, 'fat_g' => 18],
             ['class_name' => 'kenkey', 'preparation_type' => 'home_cooked', 'display_name' => 'Kenkey (home)', 'calories' => 420, 'protein_g' => 12, 'carbs_g' => 76, 'fat_g' => 8],
         ];
 

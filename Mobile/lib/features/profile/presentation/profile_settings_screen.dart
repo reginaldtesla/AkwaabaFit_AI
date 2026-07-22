@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
+import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
@@ -155,9 +156,11 @@ class ProfileNotifier extends StateNotifier<AsyncValue<UserProfile>> {
     final weightKg = weight is num
         ? weight.toDouble()
         : double.tryParse('$weight') ?? 0.0;
-    final heightCm = height is int
-        ? height
-        : int.tryParse('$height') ?? 0;
+    final heightCm = height is num
+        ? height.round()
+        : int.tryParse('$height') ??
+            double.tryParse('$height')?.round() ??
+            0;
 
     final id = u['id'];
     final membershipId = id != null ? '#${id.toString()}' : '—';
@@ -239,9 +242,9 @@ class ProfileSettingsScreen extends ConsumerWidget {
           MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
         );
         return;
-      case AppTab.safety:
+      case AppTab.dietitian:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
         );
         return;
       case AppTab.profile:
@@ -742,6 +745,9 @@ class ProfileSettingsScreen extends ConsumerWidget {
                     await ref.read(profileProvider.notifier).reloadFromRepo();
                     ref.invalidate(avatarUrlProvider);
                     ref.invalidate(genderProvider);
+                    ref.invalidate(dashboardDataProvider);
+                    ref.invalidate(stepGoalProvider);
+                    ref.invalidate(dailyCaloriesGoalProvider);
                   },
                   child: _buildListTile(
                     icon: Icons.edit_note,

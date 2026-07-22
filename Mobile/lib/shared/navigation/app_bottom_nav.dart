@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-enum AppTab { home, history, stats, safety, profile }
+enum AppTab { home, history, stats, dietitian, profile }
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
@@ -47,10 +47,10 @@ class AppBottomNav extends StatelessWidget {
               onTap: () => onTabSelected(AppTab.stats),
             ),
             _navItem(
-              icon: Icons.health_and_safety_outlined,
-              label: 'Safety',
-              isActive: activeTab == AppTab.safety,
-              onTap: () => onTabSelected(AppTab.safety),
+              icon: Icons.spa_outlined,
+              label: 'Dietitian',
+              isActive: activeTab == AppTab.dietitian,
+              onTap: () => onTabSelected(AppTab.dietitian),
             ),
             _navItem(
               icon: Icons.account_circle_outlined,

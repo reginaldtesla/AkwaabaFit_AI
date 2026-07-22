@@ -62,9 +62,9 @@ class GhanaianMealSuggestions
             str_contains($slug, 'kenkey') => 'Fried or grilled fish with shito and hot pepper.',
             str_contains($slug, 'fufu') => 'Light soup, groundnut soup, or palm nut soup.',
             str_contains($slug, 'jollof') => 'Chicken, fish, or kelewele on the side—not eaten plain.',
-            str_contains($slug, 'waakye') => 'Shito, gari, spaghetti, boiled egg, plantain—pick what the vendor offers.',
+            str_contains($slug, 'waakye') => 'Shito, gari, spaghetti, boiled egg, plantain—pick the sides that fit your plate.',
             str_contains($slug, 'beans') || str_contains($slug, 'gobe') || str_contains($slug, 'red') => 'Fried ripe plantain (red-red) or plain rice.',
-            str_contains($slug, 'rice') && ! str_contains($slug, 'jollof') => 'Stew with kontomire or salad—chop bar style.',
+            str_contains($slug, 'rice') && ! str_contains($slug, 'jollof') => 'Stew with kontomire or salad on the side.',
             str_contains($slug, 'yam') => 'Kontomire stew, garden eggs stew, or palm oil stew.',
             str_contains($slug, 'plantain') => 'With beans stew, or as kelewele beside rice or jollof.',
             str_contains($slug, 'kontomire') => 'Boiled yam, rice, or ampesi—not usually the main banku pairing.',
@@ -84,7 +84,8 @@ class GhanaianMealSuggestions
             'Hausa koko with koose fits morning or afternoon—not dinner. Kenkey with fish is evening food. Waakye works morning through early evening.',
             'Real combos: banku+okro, banku+tilapia+shito, kenkey+fried fish+shito, waakye+shito+gari+egg+plantain, fufu+light/groundnut soup, jollof+chicken/fish, red-red+plantain, ampesi yam+kontomire.',
             'Do NOT invent odd pairings or serve dishes at the wrong time of day.',
-            'Name dishes the way Ghanaians say them: waakye, banku, shito, gobe, chop bar, light soup.',
+            'Name dishes the way Ghanaians say them: waakye, banku, shito, gobe, light soup.',
+            'Do not label meals as chop-bar food, vendor food, or street-vendor food when speaking to the user.',
         ];
     }
 

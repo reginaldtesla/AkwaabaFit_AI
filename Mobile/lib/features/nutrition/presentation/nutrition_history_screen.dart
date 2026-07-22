@@ -5,9 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
+import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
 import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
 import 'package:mobile/features/nutrition/presentation/manual_meal_log_screen.dart';
-import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
@@ -117,8 +117,11 @@ final nutritionHistoryProvider = FutureProvider<List<DailyNutrition>>((ref) asyn
 
         final imRaw = m['insightMessage'];
         final insightTrimmed = imRaw?.toString().trim();
-        final insightStr =
-            (insightTrimmed == null || insightTrimmed.isEmpty) ? null : insightTrimmed;
+        final insightStr = _friendlyMealInsight(
+          (insightTrimmed == null || insightTrimmed.isEmpty)
+              ? null
+              : insightTrimmed,
+        );
 
         final imgRaw = m['imageUrl'];
         final imageUrlStr = imgRaw == null
@@ -130,7 +133,7 @@ final nutritionHistoryProvider = FutureProvider<List<DailyNutrition>>((ref) asyn
         meals.add(
           MealLog(
             id: (m['id'] ?? '').toString(),
-            name: (m['name'] ?? '').toString(),
+            name: _friendlyMealLabel((m['name'] ?? '').toString()),
             time: _formatTimeFromIso(eatenAt),
             eatenAtIso: eatenAt,
             category: (m['mealType'] ?? 'Meal').toString(),
@@ -167,6 +170,55 @@ final nutritionHistoryProvider = FutureProvider<List<DailyNutrition>>((ref) asyn
     return [];
   }
 });
+
+String _friendlyMealLabel(String name) {
+  var clean = name.trim();
+  if (clean.isEmpty) return clean;
+  clean = clean.replaceAll(
+    RegExp(r'\s*\(\s*chop\s*bar\s*\)', caseSensitive: false),
+    '',
+  );
+  clean = clean.replaceAll(
+    RegExp(r'\s*\(\s*vendor\s*\)', caseSensitive: false),
+    '',
+  );
+  clean = clean.replaceAll(
+    RegExp(r'\bchop\s*\(\s*vendor\s*\)', caseSensitive: false),
+    'chop',
+  );
+  clean = clean.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  return clean;
+}
+
+String? _friendlyMealInsight(String? insight) {
+  if (insight == null) return null;
+  var clean = insight.trim();
+  if (clean.isEmpty) return null;
+
+  const pairs = <(String, String)>[
+    (r'\bchop\s*bar\s+meals?\b', 'meals'),
+    (r'\bchop\s*bar\s+portions?\b', 'portions'),
+    (r'\bfull chop bar portion\b', 'full portion'),
+    (r'\bfrom the chop bar\b', ''),
+    (r'\bat the chop bar\b', ''),
+    (r'\bhow chop bars serve it\b', 'a classic pairing'),
+    (r'\bhow the vendor serves it\b', 'with your usual sides'),
+    (r'\blike at the vendor\b', 'with your usual sides'),
+    (r'\bfrom the vendor\b', ''),
+    (r'\bchop bars?\b', 'kitchens'),
+    (r'\bvendors?\b', 'cooks'),
+  ];
+
+  for (final pair in pairs) {
+    clean = clean.replaceAll(
+      RegExp(pair.$1, caseSensitive: false),
+      pair.$2,
+    );
+  }
+  clean = clean.replaceAll(RegExp(r'\s{2,}'), ' ');
+  clean = clean.replaceAll(RegExp(r'\s+([,.!?;:])'), r'$1').trim();
+  return clean.isEmpty ? null : clean;
+}
 
 String _formatTimeFromIso(String iso) {
   final dt = DateTime.tryParse(iso);
@@ -354,9 +406,9 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
           MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
         );
         return;
-      case AppTab.safety:
+      case AppTab.dietitian:
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HealthSafetyHubScreen()),
+          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
         );
         return;
       case AppTab.profile:

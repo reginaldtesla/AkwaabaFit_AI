@@ -60,7 +60,7 @@ class GhanaianMealSuggestions {
       return 'Chicken, fish, or kelewele on the side.';
     }
     if (s.contains('waakye')) {
-      return 'Shito, gari, spaghetti, egg, plantain—the waakye vendor spread.';
+      return 'Shito, gari, spaghetti, egg, plantain—pick the sides that fit your plate.';
     }
     if (s.contains('beans') || s.contains('gobe') || s.contains('red')) {
       return 'Fried ripe plantain (red-red) or rice.';

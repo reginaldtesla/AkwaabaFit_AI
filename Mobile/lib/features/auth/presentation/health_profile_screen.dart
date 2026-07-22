@@ -299,8 +299,9 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
       if (_mealRemindersEnabled) {
         unawaited(notifications.scheduleGhanaMealReminders());
       }
+      ref.invalidate(dashboardDataProvider);
       if (widget.isEditing) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(true);
       } else {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const DashboardScreen()),

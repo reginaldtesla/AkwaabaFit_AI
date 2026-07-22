@@ -11,6 +11,7 @@ import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
 import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
 import 'package:mobile/shared/fitness/step_goal_achievement_notifier.dart';
+import 'package:mobile/shared/fitness/idle_movement_nudge_notifier.dart';
 import 'package:mobile/shared/fitness/today_steps_from_sensor.dart';
 
 class BackgroundStepService {
@@ -90,6 +91,7 @@ String _formatSteps(int value) {
 
 Future<void> _onStepsUpdated(int steps) async {
   unawaited(StepGoalAchievementNotifier.evaluate(steps: steps));
+  unawaited(IdleMovementNudgeNotifier.onSteps(steps));
 }
 
 int? _lastForegroundSteps;
@@ -131,6 +133,7 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
   Timer? debounceFg;
   Timer? fgTicker;
   Timer? rolloverTicker;
+  Timer? idleTicker;
 
   final todaySteps = TodayStepsFromSensor();
   int? latestTodaySteps;
@@ -184,11 +187,13 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
     debounceFg?.cancel();
     fgTicker?.cancel();
     rolloverTicker?.cancel();
+    idleTicker?.cancel();
     stepSub?.cancel();
     flushTimer?.cancel();
     debounceFg = null;
     fgTicker = null;
     rolloverTicker = null;
+    idleTicker = null;
     stepSub = null;
     flushTimer = null;
   }
@@ -228,6 +233,13 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
       latestTodaySteps = 0;
       await _applySamsungStyleForeground(fgAndroid, 0, force: true);
       unawaited(_onStepsUpdated(0));
+    });
+
+    // Quiet idle-move nudges (at most once/day; see IdleMovementNudgeNotifier).
+    idleTicker = Timer.periodic(const Duration(minutes: 15), (_) async {
+      await IdleMovementNudgeNotifier.checkIdle(
+        stepsOverride: latestTodaySteps,
+      );
     });
   }
 

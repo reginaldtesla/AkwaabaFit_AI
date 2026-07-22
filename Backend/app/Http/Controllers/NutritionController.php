@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\DietitianAdviceService;
 use App\Services\FoodScanService;
 use App\Support\HealthProfileOptions;
+use App\Support\MealCopy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -44,7 +45,7 @@ class NutritionController extends Controller
                     'meals' => $items->values()->map(function (MealLog $m) {
                         return [
                             'id' => (string) $m->id,
-                            'name' => $m->name,
+                            'name' => MealCopy::friendlyName($m->name),
                             'eatenAt' => $m->eaten_at->toIso8601String(),
                             'mealType' => $m->meal_type,
                             'calories' => (int) $m->calories,
@@ -52,7 +53,7 @@ class NutritionController extends Controller
                             'carbsG' => $m->carbs_g,
                             'fatG' => $m->fat_g,
                             'safetyStatus' => $m->safety_status,
-                            'insightMessage' => $m->insight_message,
+                            'insightMessage' => MealCopy::friendlyInsight($m->insight_message),
                             'imageUrl' => $m->image_url,
                             'source' => $m->source,
                             'portionSize' => $m->portion_size,
@@ -163,7 +164,7 @@ class NutritionController extends Controller
         return response()->json([
             'status' => 'success',
             'meals' => $unique->map(fn (MealLog $m) => [
-                'name' => $m->name,
+                'name' => MealCopy::friendlyName($m->name),
                 'calories' => (int) $m->calories,
                 'proteinG' => $m->protein_g,
                 'carbsG' => $m->carbs_g,
@@ -284,11 +285,13 @@ class NutritionController extends Controller
             $insight = $mealAdvice['insight'];
         }
 
+        $insight = MealCopy::friendlyInsight(is_string($insight) ? $insight : null);
+
         $meal = MealLog::create([
             'user_id' => $user->id,
             'eaten_at' => isset($data['eaten_at']) ? Carbon::parse($data['eaten_at']) : now(),
             'meal_type' => $data['meal_type'] ?? null,
-            'name' => $data['name'],
+            'name' => MealCopy::friendlyName($data['name']),
             'calories' => (int) ($data['calories'] ?? 0),
             'protein_g' => $data['protein_g'] ?? null,
             'carbs_g' => $data['carbs_g'] ?? null,

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\BodyMetrics;
 use App\Support\GhanaianMealSuggestions;
 use App\Support\HealthAssistantCoaching;
+use App\Support\MealCopy;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -151,10 +152,27 @@ class DietitianAdviceService
         );
 
         if ($gemini !== null) {
-            return array_merge($gemini, ['source' => 'gemini']);
+            return $this->neutralMealAdvice(array_merge($gemini, ['source' => 'gemini']));
         }
 
-        return array_merge($rules, ['source' => 'rules']);
+        return $this->neutralMealAdvice(array_merge($rules, ['source' => 'rules']));
+    }
+
+    /**
+     * @param  array{insight: string, pairing: string|null, portion: string|null, source?: string}  $advice
+     * @return array{insight: string, pairing: string|null, portion: string|null, source?: string}
+     */
+    private function neutralMealAdvice(array $advice): array
+    {
+        $advice['insight'] = MealCopy::friendlyInsight($advice['insight'] ?? null) ?? '';
+        if (isset($advice['pairing']) && is_string($advice['pairing'])) {
+            $advice['pairing'] = MealCopy::friendlyInsight($advice['pairing']);
+        }
+        if (isset($advice['portion']) && is_string($advice['portion'])) {
+            $advice['portion'] = MealCopy::friendlyInsight($advice['portion']);
+        }
+
+        return $advice;
     }
 
     /**
@@ -294,7 +312,7 @@ class DietitianAdviceService
                 $recommendations[] = [
                     'category' => 'activity',
                     'title' => 'Move a bit more today',
-                    'detail' => "{$todaySteps} of {$stepGoal} steps so far. A short walk before supper helps balance chop bar meals and burns extra energy.",
+                    'detail' => "{$todaySteps} of {$stepGoal} steps so far. A short walk before supper helps balance today's meals and burns extra energy.",
                 ];
             } else {
                 $recommendations[] = [
@@ -685,7 +703,7 @@ class DietitianAdviceService
             return [
                 'category' => 'food',
                 'title' => 'Waakye chop balance',
-                'detail' => 'Pick your sides like at the vendor—shito, gari, egg, plantain—but you do not need every topping every time.',
+                'detail' => 'Pick your sides—shito, gari, egg, plantain—but you do not need every topping every time.',
             ];
         }
         if (str_contains($slug, 'kelewele') || str_contains($slug, 'fried')) {
@@ -704,9 +722,6 @@ class DietitianAdviceService
         return GhanaianMealSuggestions::pairingForFood($slug);
     }
 
-    /**
-     * @return string|null
-     */
     private function mealInsightForSlug(string $slug, string $goal): ?string
     {
         $tips = [
@@ -714,16 +729,16 @@ class DietitianAdviceService
             'banku' => 'Banku goes with okro stew or grilled tilapia and shito—that is the chop people know.',
             'fufu' => 'Fufu with light soup or groundnut soup—one medium ball is enough for most people.',
             'kenkey' => 'Kenkey and fried fish with shito is the classic supper—save kenkey for evening.',
-            'waakye' => 'Waakye chop: add shito, gari, egg, plantain—how the vendor serves it.',
+            'waakye' => 'Waakye with shito, gari, egg, or plantain—choose the sides that fit your day.',
             'kelewele' => 'Kelewele is a side chop—pair with rice, jollof, or beans, not as the whole meal.',
             'plantain' => 'Fried plantain with beans stew (red-red) or beside waakye—not eaten alone as dinner.',
             'beans' => 'Gobe/red-red with ripe plantain is a proper plate—filling and very local.',
-            'rice' => 'Rice and stew from the chop bar, with salad or kontomire if you have it.',
+            'rice' => 'Rice and stew with salad or kontomire if you have it.',
             'yam' => 'Boiled yam (ampesi) with kontomire stew or palm oil stew.',
             'kokonte' => 'Kokonte with groundnut or palm nut soup—mind the portion.',
             'koose' => 'Koose goes with Hausa koko in the morning or afternoon—not as a random supper side.',
             'hausa-koko' => 'Koko is drunk with koose or bofrot—morning or afternoon porridge, not a dinner plate.',
-            'chicken' => 'Stew chicken with jollof or plain rice is how chop bars serve it.',
+            'chicken' => 'Stew chicken with jollof or plain rice is a classic pairing.',
             'meat' => 'Goat or beef in light soup or stew—with fufu or rice.',
             'egg-pepper' => 'Eggs with bread or on waakye—not a strange solo dinner.',
         ];
@@ -744,7 +759,7 @@ class DietitianAdviceService
     private function portionNote(string $slug, int $calories): ?string
     {
         if ($calories >= 800) {
-            return 'This looks like a full chop bar portion—next time one ball of swallow or a smaller waakye base may be enough.';
+            return 'This looks like a full portion—next time one ball of swallow or a smaller waakye base may be enough.';
         }
         if (str_contains($slug, 'fufu') || str_contains($slug, 'banku') || str_contains($slug, 'kenkey')) {
             return 'One ball is the usual serving—two balls is “I am very hungry” territory.';
@@ -770,6 +785,6 @@ class DietitianAdviceService
             return "$display logged. You're above target—a short walk and kenkey with grilled fish or light soup helps.";
         }
 
-        return "Nice work logging $display. Consistent tracking is how we fine-tune your chop bar meal plan.";
+        return "Nice work logging $display. Consistent tracking helps us fine-tune your meal plan.";
     }
 }

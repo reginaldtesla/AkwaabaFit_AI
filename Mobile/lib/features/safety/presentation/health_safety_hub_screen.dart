@@ -4,13 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
-import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
-import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
-import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/features/safety/data/safety_environment_advice.dart';
 import 'package:mobile/features/safety/data/safety_health_tips.dart';
-import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/weather/dashboard_weather_merge.dart';
 import 'package:mobile/shared/weather/device_weather_service.dart';
 
@@ -245,7 +241,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: _buildAppBar(),
+      appBar: _buildAppBar(context),
       body: safetyState.when(
         loading: () =>
             const Center(child: CircularProgressIndicator(color: primary)),
@@ -259,47 +255,20 @@ class HealthSafetyHubScreen extends ConsumerWidget {
           child: _buildContent(context, ref, data),
         ),
       ),
-      bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.safety,
-        onTabSelected: (tab) => _handleTab(context, tab),
-      ),
     );
-  }
-
-  void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-        return;
-      case AppTab.history:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-        );
-        return;
-      case AppTab.stats:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
-        );
-        return;
-      case AppTab.safety:
-        return;
-      case AppTab.profile:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-        );
-        return;
-    }
   }
 
   // --- UI Components ---
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
       backgroundColor: background.withValues(alpha: 0.8),
       elevation: 0,
       scrolledUnderElevation: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_rounded),
+        onPressed: () => Navigator.of(context).maybePop(),
+      ),
       title: Text(
         'Safety Hub',
         style: GoogleFonts.plusJakartaSans(
@@ -315,7 +284,7 @@ class HealthSafetyHubScreen extends ConsumerWidget {
   Widget _buildContent(BuildContext context, WidgetRef ref, SafetyHubData data) {
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
       child: Column(
         children: [
           _RotatingHealthTipsCard(
