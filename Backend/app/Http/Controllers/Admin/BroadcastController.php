@@ -7,7 +7,6 @@ use App\Jobs\SendAdminAnnouncementJob;
 use App\Models\AdminAnnouncement;
 use App\Models\DeviceToken;
 use App\Services\FcmPushService;
-use App\Support\AdminStats;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -16,11 +15,23 @@ class BroadcastController extends Controller
 {
     public function create(FcmPushService $fcm): View
     {
+        $recent = collect();
+        $deviceTokenCount = 0;
+        $schemaReady = true;
+
+        try {
+            $recent = AdminAnnouncement::query()->latest('id')->limit(12)->get();
+            $deviceTokenCount = DeviceToken::query()->count();
+        } catch (\Throwable $e) {
+            $schemaReady = false;
+            report($e);
+        }
+
         return view('admin.broadcast', [
             'fcmConfigured' => $fcm->isConfigured(),
-            'recent' => AdminAnnouncement::query()->latest('id')->limit(12)->get(),
-            'deviceTokenCount' => DeviceToken::query()->count(),
-            'stats' => AdminStats::summary(),
+            'recent' => $recent,
+            'deviceTokenCount' => $deviceTokenCount,
+            'schemaReady' => $schemaReady,
             'generatedAt' => now(),
         ]);
     }

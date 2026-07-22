@@ -148,6 +148,13 @@
       <div class="flash">{{ session('status') }}</div>
     @endif
 
+    @if (! ($schemaReady ?? true))
+      <div class="flash" style="background:#fef3c7;color:#92400e;">
+        Database tables are missing. On the server run:
+        <code>php artisan migrate --force</code>
+      </div>
+    @endif
+
     <p class="note">
       FCM push:
       @if ($fcmConfigured)
