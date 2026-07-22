@@ -577,7 +577,7 @@ class DietitianAdviceService
         }
 
         if (DietitianAskNormalizer::looksOffTopic($q)) {
-            return "I focus on diet and healthy living, {$name}. Try asking about jollof or waakye portions, water, steps, or losing/gaining weight—and I'll give you a clear Ghana-friendly tip.";
+            return "I focus on diet and healthy living, {$name}. Try asking about jollof or waakye portions, water, steps, or losing/gaining weight and I'll give you a clear Ghana-friendly tip.";
         }
 
         if (str_contains($q, 'water') || str_contains($q, 'hydrat')) {
@@ -682,43 +682,100 @@ class DietitianAdviceService
     {
         $apiKey = trim((string) config('services.food_scan.gemini_api_key', ''));
         if ($apiKey === '') {
+            Log::warning('Dietitian Gemini skipped: GEMINI_API_KEY is empty');
+
             return null;
         }
 
-        $model = (string) config('services.food_scan.gemini_model', 'gemini-2.5-flash');
-        $timeout = (int) config('services.dietitian.gemini_timeout', 45);
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
+        $timeout = (int) config('services.food_scan.timeout', 90);
+        $payload = [
+            'contents' => [
+                ['parts' => [['text' => $prompt]]],
+            ],
+            'generationConfig' => [
+                'temperature' => 0.45,
+                'responseMimeType' => 'application/json',
+            ],
+        ];
 
         try {
-            $response = Http::timeout($timeout)
-                ->withQueryParameters(['key' => $apiKey])
-                ->post($url, [
-                    'contents' => [
-                        ['parts' => [['text' => $prompt]]],
-                    ],
-                    'generationConfig' => [
-                        'temperature' => 0.45,
-                        'responseMimeType' => 'application/json',
-                    ],
-                ]);
+            foreach ($this->geminiModels() as $model) {
+                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
+
+                $response = Http::timeout($timeout)
+                    ->withQueryParameters(['key' => $apiKey])
+                    ->post($url, $payload);
+
+                if ($response->status() === 429 || $response->status() === 403) {
+                    Log::warning('Dietitian Gemini quota/forbidden', [
+                        'model' => $model,
+                        'status' => $response->status(),
+                    ]);
+
+                    continue;
+                }
+
+                if (! $response->successful()) {
+                    Log::warning('Dietitian Gemini HTTP error', [
+                        'model' => $model,
+                        'status' => $response->status(),
+                        'body' => Str::limit($response->body(), 400, ''),
+                    ]);
+
+                    continue;
+                }
+
+                $text = data_get($response->json(), 'candidates.0.content.parts.0.text');
+                if (! is_string($text) || trim($text) === '') {
+                    continue;
+                }
+
+                $decoded = $this->decodeGeminiJsonText($text);
+                if ($decoded !== null) {
+                    return $decoded;
+                }
+            }
         } catch (\Throwable $e) {
             Log::warning('Dietitian Gemini request failed', ['error' => $e->getMessage()]);
 
             return null;
         }
 
-        if (! $response->successful()) {
-            Log::warning('Dietitian Gemini HTTP error', ['status' => $response->status(), 'body' => $response->body()]);
+        return null;
+    }
 
-            return null;
+    /**
+     * Same model ladder as food scan so one GEMINI_API_KEY serves both features.
+     *
+     * @return list<string>
+     */
+    private function geminiModels(): array
+    {
+        $primary = trim((string) config('services.food_scan.gemini_model', 'gemini-2.0-flash'));
+        $models = array_values(array_unique(array_filter([
+            $primary !== '' ? $primary : null,
+            'gemini-2.0-flash',
+            'gemini-2.0-flash-lite',
+            'gemini-flash-latest',
+            'gemini-2.5-flash',
+        ])));
+
+        return $models;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function decodeGeminiJsonText(string $text): ?array
+    {
+        $clean = trim($text);
+        if (str_starts_with($clean, '```')) {
+            $clean = preg_replace('/^```(?:json)?\s*/i', '', $clean) ?? $clean;
+            $clean = preg_replace('/\s*```$/', '', $clean) ?? $clean;
+            $clean = trim($clean);
         }
 
-        $text = data_get($response->json(), 'candidates.0.content.parts.0.text');
-        if (! is_string($text) || trim($text) === '') {
-            return null;
-        }
-
-        $decoded = json_decode(trim($text), true);
+        $decoded = json_decode($clean, true);
 
         return is_array($decoded) ? $decoded : null;
     }
