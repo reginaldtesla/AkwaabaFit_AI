@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'forgot_password_screen.dart';
@@ -89,56 +88,6 @@ class AuthNotifier extends AsyncNotifier<void> {
       return await _finalizeAuthResponse(response.data);
     } on DioException catch (e) {
       return _handleAuthDioError(e);
-    }
-  }
-
-  Future<AuthSuccess?> authenticateWithGoogle() async {
-    state = const AsyncValue.loading();
-    try {
-      final google = GoogleSignIn.instance;
-      final serverClientId = AppConfig.googleServerClientId.trim();
-      await google.initialize(
-        serverClientId: serverClientId.isEmpty ? null : serverClientId,
-      );
-
-      final account = await google.authenticate();
-      final idToken = account.authentication.idToken;
-      if (idToken == null || idToken.isEmpty) {
-        state = AsyncValue.error(
-          'Google did not return a sign-in token. Check GOOGLE_SERVER_CLIENT_ID.',
-          StackTrace.current,
-        );
-        return null;
-      }
-
-      final response = await _dio.post(
-        '/auth/google',
-        data: {
-          'id_token': idToken,
-          'device_name': 'AkwaabaFit Google (${Platform.operatingSystem})',
-        },
-        options: Options(headers: {'Accept': 'application/json'}),
-      );
-
-      return await _finalizeAuthResponse(response.data);
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) {
-        state = const AsyncValue.data(null);
-        return null;
-      }
-      state = AsyncValue.error(
-        'Google sign-in failed. Please try again.',
-        StackTrace.current,
-      );
-      return null;
-    } on DioException catch (e) {
-      return _handleAuthDioError(e);
-    } catch (e, st) {
-      state = AsyncValue.error(
-        'Google sign-in failed. Please try again.',
-        st,
-      );
-      return null;
     }
   }
 
@@ -352,23 +301,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         );
 
     if (!mounted) return;
-    await _handleAuthResult(result, fromGoogle: false);
+    await _handleAuthResult(result);
   }
 
-  Future<void> _continueWithGoogle() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    ScaffoldMessenger.of(context).clearSnackBars();
-
-    final result =
-        await ref.read(authProvider.notifier).authenticateWithGoogle();
-    if (!mounted) return;
-    await _handleAuthResult(result, fromGoogle: true);
-  }
-
-  Future<void> _handleAuthResult(
-    AuthSuccess? result, {
-    required bool fromGoogle,
-  }) async {
+  Future<void> _handleAuthResult(AuthSuccess? result) async {
     if (result != null) {
       ref.invalidate(sanctumTokenReadyProvider);
       ref.invalidate(dashboardDataProvider);
@@ -387,12 +323,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         final messenger = rootScaffoldMessengerKey.currentState;
         if (messenger == null) return;
         final message = result.profileCompleted
-            ? (fromGoogle ? 'Signed in with Google!' : 'Welcome back!')
-            : (fromGoogle
-                ? 'Signed in with Google — finish your health profile to continue.'
-                : (_isLogin
-                    ? 'Signed in — finish your health profile to continue.'
-                    : 'Account created. Let\'s set up your health profile.'));
+            ? 'Welcome back!'
+            : (_isLogin
+                ? 'Signed in — finish your health profile to continue.'
+                : 'Account created. Let\'s set up your health profile.');
         messenger.showSnackBar(
           SnackBar(
             content: Text(message),
@@ -406,12 +340,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       final err = ref.read(authProvider).error?.toString();
       if (err != null && err.isNotEmpty) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            fromGoogle
-                ? 'Google sign-in was cancelled.'
-                : 'Login failed. Please try again.',
-          ),
+        const SnackBar(
+          content: Text('Login failed. Please try again.'),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -595,46 +525,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                const Expanded(child: Divider(color: _border)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    'or',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _textMuted,
-                    ),
-                  ),
-                ),
-                const Expanded(child: Divider(color: _border)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed: authState.isLoading ? null : _continueWithGoogle,
-                icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
-                label: Text(
-                  'Continue with Google',
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _textPrimary,
-                  side: const BorderSide(color: _border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
               ),
             ),
           ],
