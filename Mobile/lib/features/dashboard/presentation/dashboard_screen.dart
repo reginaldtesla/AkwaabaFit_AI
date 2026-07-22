@@ -71,6 +71,9 @@ class DashboardData {
   final int? mealsLoggedToday;
   final int? mealsLogged7Days;
   final bool fromOfflineCache;
+  /// When [fromOfflineCache] is true: device reported a network interface.
+  /// false → no transport; true → online but API failed / timed out.
+  final bool networkInterfaceUp;
   /// Grams inferred from calorie-goal macro split when logged meals had no P/C/F data.
   final bool macrosEstimated;
   final double? weightKg;
@@ -107,6 +110,7 @@ class DashboardData {
     required this.mealsLoggedToday,
     required this.mealsLogged7Days,
     this.fromOfflineCache = false,
+    this.networkInterfaceUp = true,
     this.macrosEstimated = false,
     this.weightKg,
     this.heightCm,
@@ -195,6 +199,8 @@ class DashboardData {
     double? tempCelsius,
     String? location,
     int? airQualityAqi,
+    bool? fromOfflineCache,
+    bool? networkInterfaceUp,
   }) {
     return DashboardData(
       userName: userName,
@@ -223,7 +229,8 @@ class DashboardData {
       workoutDaysPerWeek: workoutDaysPerWeek,
       mealsLoggedToday: mealsLoggedToday,
       mealsLogged7Days: mealsLogged7Days,
-      fromOfflineCache: fromOfflineCache,
+      fromOfflineCache: fromOfflineCache ?? this.fromOfflineCache,
+      networkInterfaceUp: networkInterfaceUp ?? this.networkInterfaceUp,
       macrosEstimated: macrosEstimated ?? this.macrosEstimated,
       weightKg: weightKg ?? this.weightKg,
       heightCm: heightCm ?? this.heightCm,
@@ -292,6 +299,7 @@ class DashboardData {
       mealsLoggedToday: _dashboardJsonIntNullable(json['mealsLoggedToday']),
       mealsLogged7Days: _dashboardJsonIntNullable(json['mealsLogged7Days']),
       fromOfflineCache: fromOfflineCache,
+      networkInterfaceUp: !fromOfflineCache,
       macrosEstimated: _dashboardJsonBool(
         json['macrosEstimated'] ?? json['macros_estimated'],
       ),
@@ -653,6 +661,7 @@ Future<DashboardData?> _pureOfflineDashboardFromSqlite(
     mealsLoggedToday: macrosToday.mealCount,
     mealsLogged7Days: null,
     fromOfflineCache: true,
+    networkInterfaceUp: false,
     macrosEstimated: false,
     weightKg: (weightKg != null && weightKg > 0) ? weightKg : null,
     heightCm: (heightCm != null && heightCm > 0) ? heightCm : null,
@@ -765,20 +774,19 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
   final dio = Dio(
     BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 4),
-      receiveTimeout: const Duration(seconds: 6),
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 12),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
+        ...AppConfig.apiHeaders,
       },
     ),
   );
 
+  // Always attempt the API. connectivity_plus can lag or mis-report cellular
+  // (e.g. Samsung 4G as "other") while the status bar shows data.
   final online = await isDeviceOnline();
-
-  if (!online) {
-    return _loadDashboardFromDevice(ref, db);
-  }
 
   try {
     final response = await dio.get(
@@ -798,7 +806,11 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
       _normalizeDashboardMacrosToConsumedCalories(merged),
     );
   } catch (_) {
-    return _loadDashboardFromDevice(ref, db);
+    final cached = await _loadDashboardFromDevice(ref, db);
+    return cached.copyWith(
+      fromOfflineCache: true,
+      networkInterfaceUp: online,
+    );
   }
 });
 
@@ -1060,11 +1072,19 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.cloud_off_outlined, size: 18, color: muted),
+                      Icon(
+                        data.networkInterfaceUp
+                            ? Icons.cloud_sync_outlined
+                            : Icons.cloud_off_outlined,
+                        size: 18,
+                        color: muted,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Offline — showing last synced dashboard',
+                          data.networkInterfaceUp
+                              ? "Couldn't refresh — showing last synced dashboard"
+                              : 'Offline — showing last synced dashboard',
                           style: GoogleFonts.inter(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

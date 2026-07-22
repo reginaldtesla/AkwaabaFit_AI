@@ -125,6 +125,8 @@ class ActivityData {
   /// Step totals per 3-hour bucket (aligned with [hourlyData] indices).
   final List<int> hourlyBucketSteps;
   final bool fromOfflineCache;
+  /// When [fromOfflineCache] is true: device reported a network interface.
+  final bool networkInterfaceUp;
   /// Weather via `GET /activity/today` (Open-Meteo on server; device GPS when online).
   final double? tempCelsius;
   final String? weatherLocation;
@@ -143,6 +145,7 @@ class ActivityData {
     required this.hourlyData,
     required this.hourlyBucketSteps,
     this.fromOfflineCache = false,
+    this.networkInterfaceUp = true,
     this.tempCelsius,
     this.weatherLocation,
     this.weatherMain,
@@ -164,6 +167,7 @@ class ActivityData {
     List<double>? hourlyData,
     List<int>? hourlyBucketSteps,
     bool? fromOfflineCache,
+    bool? networkInterfaceUp,
     double? tempCelsius,
     String? weatherLocation,
     String? weatherMain,
@@ -181,6 +185,7 @@ class ActivityData {
       hourlyData: hourlyData ?? this.hourlyData,
       hourlyBucketSteps: hourlyBucketSteps ?? this.hourlyBucketSteps,
       fromOfflineCache: fromOfflineCache ?? this.fromOfflineCache,
+      networkInterfaceUp: networkInterfaceUp ?? this.networkInterfaceUp,
       tempCelsius: tempCelsius ?? this.tempCelsius,
       weatherLocation: weatherLocation ?? this.weatherLocation,
       weatherMain: weatherMain ?? this.weatherMain,
@@ -269,21 +274,7 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
     );
   }
 
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 3),
-      receiveTimeout: const Duration(seconds: 5),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    ),
-  );
-
-  final online = await isDeviceOnline();
-
-  if (!online) {
+  Future<ActivityData> activityFromCache({required bool networkUp}) async {
     final cached = await db.getActivityCache();
     final localSteps = await db.getStepsLocalForDate(today);
     final localGoal = await _readLocalStepGoalActivity(ref);
@@ -297,11 +288,14 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
         calories: _kcalBurnedFromSteps(mergedSteps),
         distanceKm: _distanceKmFromSteps(mergedSteps),
         fromOfflineCache: true,
+        networkInterfaceUp: networkUp,
       );
     }
 
-    final fallback = await activityFromLocalStepsOnly();
-    if (fallback != null) return fallback;
+    final localOnly = await activityFromLocalStepsOnly();
+    if (localOnly != null) {
+      return localOnly.copyWith(networkInterfaceUp: networkUp);
+    }
 
     return ActivityData(
       stepsToday: 0,
@@ -313,8 +307,24 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
       hourlyData: List.filled(8, 0.0),
       hourlyBucketSteps: List.filled(8, 0),
       fromOfflineCache: true,
+      networkInterfaceUp: networkUp,
     );
   }
+
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: AppConfig.apiBaseUrl,
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 12),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+        ...AppConfig.apiHeaders,
+      },
+    ),
+  );
+
+  final online = await isDeviceOnline();
 
   try {
     // Cached GPS weather only — never invent Accra as the user's location.
@@ -356,37 +366,7 @@ final activityDataProvider = FutureProvider<ActivityData>((ref) async {
 
     return base;
   } catch (_) {
-    final cached = await db.getActivityCache();
-    final localSteps = await db.getStepsLocalForDate(today);
-    final localGoal = await _readLocalStepGoalActivity(ref);
-
-    if (cached != null) {
-      final base = ActivityData.fromJson(cached);
-      final mergedSteps = localSteps ?? base.stepsToday;
-      return base.copyWith(
-        stepsToday: mergedSteps,
-        stepGoal: (localGoal != null && localGoal > 0) ? localGoal : base.stepGoal,
-        calories: _kcalBurnedFromSteps(mergedSteps),
-        distanceKm: _distanceKmFromSteps(mergedSteps),
-        fromOfflineCache: true,
-      );
-    }
-
-    final fallback = await activityFromLocalStepsOnly();
-    if (fallback != null) return fallback;
-
-    final localGoalCatch = await _readLocalStepGoalActivity(ref);
-    return ActivityData(
-      stepsToday: 0,
-      stepsYesterday: null,
-      stepGoal: localGoalCatch ?? 10000,
-      streakDays: 0,
-      calories: 0,
-      distanceKm: 0,
-      hourlyData: List.filled(8, 0.0),
-      hourlyBucketSteps: List.filled(8, 0),
-      fromOfflineCache: true,
-    );
+    return activityFromCache(networkUp: online);
   }
 });
 
@@ -798,12 +778,19 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
               ),
               child: Row(
                 children: [
-                  Icon(Icons.cloud_off_outlined,
-                      size: 18, color: Colors.blueGrey.shade700),
+                  Icon(
+                    data.networkInterfaceUp
+                        ? Icons.cloud_sync_outlined
+                        : Icons.cloud_off_outlined,
+                    size: 18,
+                    color: Colors.blueGrey.shade700,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Offline — showing last synced activity',
+                      data.networkInterfaceUp
+                          ? "Couldn't refresh — showing last synced activity"
+                          : 'Offline — showing last synced activity',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
