@@ -46,10 +46,34 @@ class LandingLinksTest extends TestCase
         );
     }
 
-    public function test_apk_download_url_returns_null_when_unset(): void
+    public function test_apk_download_url_returns_null_when_unset_and_file_missing(): void
     {
-        config(['landing.apk_url' => null]);
+        config([
+            'landing.apk_url' => null,
+            'landing.apk_storage_path' => storage_path('app/public/downloads/does-not-exist-'.uniqid('', true).'.apk'),
+        ]);
 
         $this->assertNull(LandingLinks::apkDownloadUrl());
+    }
+
+    public function test_apk_download_url_uses_local_route_when_file_exists(): void
+    {
+        $path = storage_path('app/public/downloads/unit-test-'.uniqid('', true).'.apk');
+        $dir = dirname($path);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        file_put_contents($path, 'apk');
+
+        config([
+            'landing.apk_url' => null,
+            'landing.apk_storage_path' => $path,
+        ]);
+
+        try {
+            $this->assertSame(route('apk.download'), LandingLinks::apkDownloadUrl());
+        } finally {
+            @unlink($path);
+        }
     }
 }

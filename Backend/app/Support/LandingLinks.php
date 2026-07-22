@@ -5,28 +5,57 @@ namespace App\Support;
 final class LandingLinks
 {
     /**
-     * Direct APK download URL for the landing page (Google Drive share links are normalized).
+     * Absolute filesystem path to the hosted APK (upload here on the server).
+     */
+    public static function apkStoragePath(): string
+    {
+        $custom = trim((string) config('landing.apk_storage_path', ''));
+        if ($custom !== '') {
+            return $custom;
+        }
+
+        $filename = trim((string) config('landing.apk_filename', 'akwaabafit.apk'));
+        if ($filename === '') {
+            $filename = 'akwaabafit.apk';
+        }
+
+        return storage_path('app/public/downloads/'.$filename);
+    }
+
+    public static function apkIsAvailable(): bool
+    {
+        return is_file(self::apkStoragePath());
+    }
+
+    /**
+     * Direct APK download URL for the landing page.
+     * Prefer LANDING_APK_URL when set (Google Drive share links are normalized);
+     * otherwise serve from this app via /download/akwaabafit.apk when the file exists.
      */
     public static function apkDownloadUrl(): ?string
     {
         $raw = trim((string) config('landing.apk_url', ''));
-        if ($raw === '') {
-            return null;
-        }
+        if ($raw !== '') {
+            if (! str_contains($raw, 'drive.google.com')) {
+                return $raw;
+            }
 
-        if (! str_contains($raw, 'drive.google.com')) {
+            if (preg_match('~drive\.google\.com/file/d/([^/]+)~', $raw, $matches) === 1) {
+                return 'https://drive.google.com/uc?export=download&id='.$matches[1];
+            }
+
+            if (preg_match('~[?&]id=([^&]+)~', $raw, $matches) === 1) {
+                return 'https://drive.google.com/uc?export=download&id='.$matches[1];
+            }
+
             return $raw;
         }
 
-        if (preg_match('~drive\.google\.com/file/d/([^/]+)~', $raw, $matches) === 1) {
-            return 'https://drive.google.com/uc?export=download&id='.$matches[1];
+        if (! self::apkIsAvailable()) {
+            return null;
         }
 
-        if (preg_match('~[?&]id=([^&]+)~', $raw, $matches) === 1) {
-            return 'https://drive.google.com/uc?export=download&id='.$matches[1];
-        }
-
-        return $raw;
+        return route('apk.download');
     }
 
     /**

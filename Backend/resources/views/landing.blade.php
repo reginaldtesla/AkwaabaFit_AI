@@ -675,7 +675,7 @@
             AkwaabaFit is a mobile health app for everyday life here — track your steps, scan jollof and banku with AI, and get practical coaching that respects local food, weather, and busy schedules.
           </p>
           <div class="hero-ctas">
-            <a class="btn btn-primary" href="{{ $apkDownloadUrl ?? '#download' }}" @if($apkDownloadUrl) rel="noopener" @endif>Download APK</a>
+            <a class="btn btn-primary" href="{{ $apkDownloadUrl ?? '#download' }}" @if($apkDownloadUrl) download="AkwaabaFit.apk" rel="noopener" @endif>Download APK</a>
             <a class="btn btn-ghost" href="#features">See what it does</a>
           </div>
           <p class="hero-note">
@@ -905,7 +905,7 @@
             </p>
             @if ($apkDownloadUrl)
             <p style="margin-top: 1rem;">
-              <a class="btn btn-ghost" style="background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.2);" href="{{ $apkDownloadUrl }}" rel="noopener">Download APK</a>
+              <a class="btn btn-ghost" style="background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.2);" href="{{ $apkDownloadUrl }}" download="AkwaabaFit.apk" rel="noopener">Download APK</a>
             </p>
             @endif
           </div>
