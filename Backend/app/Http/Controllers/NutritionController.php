@@ -347,6 +347,24 @@ class NutritionController extends Controller
     }
 
     /**
+     * Free-form AkwaabaFit AI diet / health question on the Dietitian tab.
+     */
+    public function askAdvice(Request $request, DietitianAdviceService $dietitian): JsonResponse
+    {
+        $data = $request->validate([
+            'question' => ['required', 'string', 'min:5', 'max:500'],
+        ]);
+
+        $result = $dietitian->askQuestion($request->user(), $data['question']);
+
+        return response()->json([
+            'status' => 'success',
+            'answer' => $result['answer'],
+            'source' => $result['source'],
+        ]);
+    }
+
+    /**
      * @return array{remaining_kcal: int, protein_gap: int}
      */
     private function todayNutritionGaps(User $user): array

@@ -159,6 +159,30 @@ class DietitianAdviceService
     }
 
     /**
+     * Answer a free-form diet / healthy-living question (Ghana-focused coaching).
+     *
+     * @return array{answer: string, source: string}
+     */
+    public function askQuestion(User $user, string $question): array
+    {
+        $question = trim(MealCopy::friendlyInsight($question) ?? $question);
+        $question = Str::limit($question, 500, '');
+
+        $gemini = $this->tryGeminiAskQuestion($user, $question);
+        if ($gemini !== null) {
+            return [
+                'answer' => $gemini,
+                'source' => 'gemini',
+            ];
+        }
+
+        return [
+            'answer' => $this->ruleBasedAskAnswer($user, $question),
+            'source' => 'rules',
+        ];
+    }
+
+    /**
      * @param  array{insight: string, pairing: string|null, portion: string|null, source?: string}  $advice
      * @return array{insight: string, pairing: string|null, portion: string|null, source?: string}
      */
@@ -493,6 +517,81 @@ class DietitianAdviceService
         }
 
         return $this->normalizeDailyAdvicePayload($parsed);
+    }
+
+    private function tryGeminiAskQuestion(User $user, string $question): ?string
+    {
+        $context = [
+            'client' => [
+                'name' => $this->firstName((string) $user->name),
+                'goal' => (string) ($user->goal ?? ''),
+                'age' => $user->age,
+                'gender' => $user->gender,
+                'weight_kg' => $user->weight,
+                'height_cm' => $user->height,
+                'activity_level' => $user->activity_level,
+            ],
+            'question' => $question,
+        ];
+
+        $prompt = 'You are AkwaabaFit AI, a warm Ghanaian dietitian coach in a mobile app. '
+            .implode(' ', GhanaianMealSuggestions::geminiAuthenticityRules()).' '
+            .'Answer ONLY health, diet, hydration, portions, Ghanaian meals, and general wellness questions. '
+            .'Refuse medical diagnosis, prescriptions, and emergencies—suggest seeing a clinician. '
+            .'Keep the answer under 120 words, practical, 2nd person. No vendor or chop-bar branding. '
+            .'JSON only: {"answer":"..."}. Data: '
+            .json_encode($context, JSON_UNESCAPED_UNICODE);
+
+        $parsed = $this->geminiJson($prompt);
+        if ($parsed === null || ! isset($parsed['answer'])) {
+            return null;
+        }
+
+        $answer = trim((string) $parsed['answer']);
+        if ($answer === '') {
+            return null;
+        }
+
+        return Str::limit(MealCopy::friendlyInsight($answer) ?? $answer, 800, '');
+    }
+
+    private function ruleBasedAskAnswer(User $user, string $question): string
+    {
+        $name = $this->firstName((string) $user->name);
+        $goal = trim((string) ($user->goal ?? ''));
+        $q = Str::lower($question);
+
+        if (preg_match('/\b(diagnos|prescri|medicat|cancer|pregnan|emergency|chest pain|suicid)\b/i', $question)) {
+            return "I can't diagnose or prescribe, $name. For symptoms or medication questions, please see a doctor or pharmacist. I can still help with everyday Ghanaian meals, portions, and hydration.";
+        }
+
+        if (str_contains($q, 'water') || str_contains($q, 'hydrat')) {
+            return "Aim for 6–8 glasses of water a day, {$name} — more if you eat spicy stews, jollof, or walk a lot in the heat. Sip steadily rather than gulping all at once.";
+        }
+
+        if (str_contains($q, 'protein') || str_contains($q, 'tilapia') || str_contains($q, 'egg')) {
+            return 'Good protein choices here: grilled tilapia, eggs on waakye, beans (gobe), chicken stew, or groundnut soup with fish. Spread them across meals instead of one heavy plate.';
+        }
+
+        if (str_contains($q, 'jollof') || str_contains($q, 'waakye') || str_contains($q, 'banku') || str_contains($q, 'fufu') || str_contains($q, 'kenkey')) {
+            return 'Keep starch to about a fist-size serving (one ball of banku/fufu/kenkey, or a modest waakye/jollof base), then fill the plate with fish, stew, and kontomire or salad. That balance fits most goals.';
+        }
+
+        if (str_contains($q, 'lose') || str_contains($q, 'weight loss') || $goal === 'Lose weight') {
+            return $goal === 'Lose weight'
+                ? 'For your weight-loss goal, prioritize grilled protein, smaller swallow portions, and fewer fried sides. Log meals so we can adjust the rest of your day.'
+                : 'Steady weight loss comes from slightly smaller starch portions, lean protein, and daily walking—not cutting Ghanaian foods entirely.';
+        }
+
+        if (str_contains($q, 'gain') || $goal === 'Gain weight') {
+            return 'To gain steadily, add calorie-dense but nourishing choices: groundnut soup, banku with fish, peanuts, milk, or an extra egg. Eat regularly and keep logging.';
+        }
+
+        if (str_contains($q, 'bmi') || str_contains($q, 'body')) {
+            return 'BMI is one signal, not a verdict. Pair it with how you feel, your step habit, and balanced plates. Update height and weight in your profile so coaching stays accurate.';
+        }
+
+        return "Focus on balanced Ghanaian plates, $name: protein + vegetables + a sensible starch portion, plus water through the day. Ask me about a specific meal or habit and I'll get more practical.";
     }
 
     /**

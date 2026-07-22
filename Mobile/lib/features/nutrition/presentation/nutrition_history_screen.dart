@@ -2,15 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
-import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
-import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
-import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
-import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
-import 'package:mobile/features/nutrition/presentation/manual_meal_log_screen.dart';
-import 'package:mobile/shared/ui/network_error_view.dart';
-import 'package:mobile/shared/ui/user_friendly_errors.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/nutrition/meal_macro_row.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
 
@@ -258,7 +251,9 @@ String _prettyDayLabel(String dateStr) {
 // =====================================================================
 
 class NutritionHistoryScreen extends ConsumerStatefulWidget {
-  const NutritionHistoryScreen({super.key});
+  const NutritionHistoryScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   @override
   ConsumerState<NutritionHistoryScreen> createState() =>
@@ -385,38 +380,17 @@ class _NutritionHistoryScreenState extends ConsumerState<NutritionHistoryScreen>
           ScanMealFab(color: dashboardGreen),
         ],
       ),
-      bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.history,
-        onTabSelected: (tab) => _handleTab(context, tab),
-      ),
+      bottomNavigationBar: widget.showBottomNav
+          ? AppBottomNav(
+              activeTab: AppTab.history,
+              onTabSelected: (tab) => _handleTab(context, tab),
+            )
+          : null,
     );
   }
 
   void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-        return;
-      case AppTab.history:
-        return;
-      case AppTab.stats:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
-        );
-        return;
-      case AppTab.dietitian:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
-        );
-        return;
-      case AppTab.profile:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-        );
-        return;
-    }
+    MainTabShell.open(context, tab: tab);
   }
 
   // --- UI Components ---

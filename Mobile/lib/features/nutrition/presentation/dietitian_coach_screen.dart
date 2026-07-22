@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
-import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
-import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
-import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/nutrition/dietitian_advice.dart';
+import 'package:mobile/shared/nutrition/dietitian_ask_api.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
 import 'package:mobile/shared/ui/user_friendly_errors.dart';
 
@@ -34,7 +33,7 @@ class DietitianCoachScreen extends ConsumerWidget {
         backgroundColor: Colors.white,
         foregroundColor: slate800,
         elevation: 0,
-        automaticallyImplyLeading: !showBottomNav,
+        automaticallyImplyLeading: advice != null,
         title: _titleRow(
           isAi: advice?.isAiPowered == true ||
               (dashboardAsync?.valueOrNull?.resolveDietitianAdvice().isAiPowered ??
@@ -102,30 +101,7 @@ class DietitianCoachScreen extends ConsumerWidget {
   }
 
   void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-        return;
-      case AppTab.history:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-        );
-        return;
-      case AppTab.stats:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
-        );
-        return;
-      case AppTab.dietitian:
-        return;
-      case AppTab.profile:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-        );
-        return;
-    }
+    MainTabShell.open(context, tab: tab);
   }
 }
 
@@ -144,6 +120,8 @@ class _DietitianBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
         _heroCard(),
+        const SizedBox(height: 16),
+        const _AskAkwaabaFitCard(),
         if (advice.bodyMetrics != null) ...[
           const SizedBox(height: 16),
           _bodyMetricsCard(advice.bodyMetrics!),
@@ -551,6 +529,231 @@ class _DietitianBody extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AskAkwaabaFitCard extends StatefulWidget {
+  const _AskAkwaabaFitCard();
+
+  @override
+  State<_AskAkwaabaFitCard> createState() => _AskAkwaabaFitCardState();
+}
+
+class _AskAkwaabaFitCardState extends State<_AskAkwaabaFitCard> {
+  final _controller = TextEditingController();
+  final _api = DietitianAskApi();
+  bool _loading = false;
+  String? _answer;
+  String? _error;
+  bool _aiSource = false;
+
+  static const Color primary = DietitianCoachScreen.primary;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final question = _controller.text.trim();
+    if (question.length < 5 || _loading) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _error = null;
+      _answer = null;
+      _aiSource = false;
+    });
+
+    try {
+      final result = await _api.ask(question);
+      if (!mounted) return;
+      setState(() {
+        _answer = result.answer;
+        _aiSource = result.isAiPowered;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = userFriendlyDataLoadMessage(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.chat_bubble_outline_rounded, color: primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ask AkwaabaFit AI',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: DietitianCoachScreen.slate800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ask a diet or healthy-living question—Ghanaian meals, portions, hydration, and habits.',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              height: 1.4,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            minLines: 2,
+            maxLines: 4,
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              hintText: 'e.g. Is kenkey okay for dinner if I want to lose weight?',
+              hintStyle: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0xFF94A3B8),
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF8FAFC),
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: primary, width: 1.5),
+              ),
+            ),
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: DietitianCoachScreen.slate800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: _loading ? null : _submit,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.send_rounded, size: 18),
+              label: Text(_loading ? 'Thinking…' : 'Ask'),
+              style: FilledButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: primary.withValues(alpha: 0.6),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: const Color(0xFFDC2626),
+              ),
+            ),
+          ],
+          if (_answer != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: primary.withValues(alpha: 0.12)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Answer',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: primary,
+                        ),
+                      ),
+                      if (_aiSource) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'AI',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _answer!,
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      height: 1.45,
+                      color: DietitianCoachScreen.slate800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

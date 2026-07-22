@@ -6,9 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
-import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
-import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
-import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/features/safety/presentation/health_safety_hub_screen.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/auth/presentation/splash_screen.dart';
@@ -19,6 +16,7 @@ import 'package:mobile/shared/fitness/leaderboard_provider.dart';
 import 'package:mobile/shared/fitness/steps_offline_recorder.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/fitness/foreground_notification_prefs.dart';
 
@@ -197,7 +195,9 @@ class ProfileNotifier extends StateNotifier<AsyncValue<UserProfile>> {
 // =====================================================================
 
 class ProfileSettingsScreen extends ConsumerWidget {
-  const ProfileSettingsScreen({super.key});
+  const ProfileSettingsScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   // Brand Colors
   final Color primary = const Color(0xFF0A3D2E);
@@ -218,38 +218,17 @@ class ProfileSettingsScreen extends ConsumerWidget {
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (data) => _buildContent(context, ref, data),
       ),
-      bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.profile,
-        onTabSelected: (tab) => _handleTab(context, tab),
-      ),
+      bottomNavigationBar: showBottomNav
+          ? AppBottomNav(
+              activeTab: AppTab.profile,
+              onTabSelected: (tab) => _handleTab(context, tab),
+            )
+          : null,
     );
   }
 
   void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-        return;
-      case AppTab.history:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-        );
-        return;
-      case AppTab.stats:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
-        );
-        return;
-      case AppTab.dietitian:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
-        );
-        return;
-      case AppTab.profile:
-        return;
-    }
+    MainTabShell.open(context, tab: tab);
   }
 
   // --- UI Components ---

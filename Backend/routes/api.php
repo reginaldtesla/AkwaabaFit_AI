@@ -51,6 +51,7 @@ Route::middleware(['auth:sanctum', RecordUserLastSeen::class])->group(function (
     // Nutrition Routes
     Route::post('/nutrition/log', [NutritionController::class, 'log']);
     Route::post('/nutrition/advice/meal', [NutritionController::class, 'mealAdvice']);
+    Route::post('/nutrition/advice/ask', [NutritionController::class, 'askAdvice']);
     Route::post('/nutrition/scan', [NutritionController::class, 'scan']);
     Route::get('/nutrition/history', [NutritionController::class, 'history']);
     Route::get('/nutrition/foods/search', [NutritionController::class, 'searchFoods']);

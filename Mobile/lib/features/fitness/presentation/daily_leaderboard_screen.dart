@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
-import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
-import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
-import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/fitness/leaderboard_provider.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 
 export 'package:mobile/shared/fitness/leaderboard_provider.dart'
     show LeaderboardEntry, LeaderboardPeriod, leaderboardProvider;
@@ -234,33 +231,7 @@ class _DailyLeaderboardScreenState
   }
 
   void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-        return;
-      case AppTab.history:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-        );
-        return;
-      case AppTab.stats:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
-        );
-        return;
-      case AppTab.dietitian:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
-        );
-        return;
-      case AppTab.profile:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-        );
-        return;
-    }
+    MainTabShell.open(context, tab: tab);
   }
 }
 
@@ -389,6 +360,37 @@ class _LeaderboardScroll extends StatelessWidget {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
+        if (snapshot.fromCache)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Showing last saved leaderboard. Pull to refresh when online.',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (!snapshot.me.optedIn)
           SliverToBoxAdapter(
             child: Padding(

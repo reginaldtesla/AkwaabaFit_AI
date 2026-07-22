@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' show max;
 
 import 'package:flutter/material.dart';
@@ -10,7 +10,6 @@ import 'package:mobile/shared/connectivity/connectivity_utils.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/fitness/presentation/activity_tracking_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
-import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
 import 'package:mobile/features/nutrition/presentation/water_tracker_card.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/shared/nutrition/dietitian_advice.dart';
@@ -26,6 +25,7 @@ import 'package:mobile/shared/notifications/notification_inbox_provider.dart';
 import 'package:mobile/shared/notifications/notifications_modal.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/auth/sanctum_token_storage.dart';
 import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
 import 'package:mobile/shared/config/app_config.dart';
@@ -851,7 +851,9 @@ void _syncForegroundAndScheduledReminders(WidgetRef ref, DashboardData data) {
 // =====================================================================
 
 class DashboardScreen extends ConsumerWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   // Ghana editorial + clinical clean
   static const Color primary = Color(0xFF1A5D1A);
@@ -945,10 +947,12 @@ class DashboardScreen extends ConsumerWidget {
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: const ScanMealFab(),
 
-      bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.home,
-        onTabSelected: (tab) => _handleTab(context, tab),
-      ),
+      bottomNavigationBar: showBottomNav
+          ? AppBottomNav(
+              activeTab: AppTab.home,
+              onTabSelected: (tab) => _handleTab(context, tab),
+            )
+          : null,
     );
   }
 
@@ -1025,30 +1029,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        return;
-      case AppTab.history:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-        );
-        return;
-      case AppTab.stats:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ActivityTrackingScreen()),
-        );
-        return;
-      case AppTab.dietitian:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
-        );
-        return;
-      case AppTab.profile:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-        );
-        return;
-    }
+    MainTabShell.open(context, tab: tab);
   }
 
   Widget _buildContent(BuildContext context, DashboardData data, WidgetRef ref) {

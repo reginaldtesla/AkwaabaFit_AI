@@ -7,7 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
 import 'package:mobile/features/auth/presentation/health_profile_screen.dart';
-import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
@@ -249,7 +249,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           break;
         case 'authenticated_profile_complete':
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+            MaterialPageRoute(builder: (_) => const MainTabShell()),
           );
           break;
       }
@@ -505,18 +505,5 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   Widget _buildLogo() {
     return const AppBrandLogo(size: 160);
-  }
-}
-
-// Placeholder AppScreen - replace with your actual main app screen
-class AppScreen extends StatelessWidget {
-  const AppScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('AkwaabaFIT_AI')),
-      body: const Center(child: Text('Welcome to the main app!')),
-    );
   }
 }

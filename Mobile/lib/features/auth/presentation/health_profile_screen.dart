@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/health/health_profile_options.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
@@ -304,7 +305,7 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
         Navigator.of(context).pop(true);
       } else {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          MaterialPageRoute(builder: (_) => const MainTabShell()),
         );
       }
     }
@@ -889,19 +890,6 @@ class _HealthProfileScreenState extends ConsumerState<HealthProfileScreen> {
         filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
         child: Container(color: Colors.transparent),
       ),
-    );
-  }
-}
-
-// Placeholder AppScreen - replace with your actual main app screen
-class AppScreen extends StatelessWidget {
-  const AppScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('AkwaabaFIT_AI')),
-      body: const Center(child: Text('Welcome to the main app!')),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'forgot_password_screen.dart';
 import 'health_profile_screen.dart';
 import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
 import 'package:mobile/shared/auth/sanctum_token_storage.dart';
 import 'package:mobile/shared/auth/sanctum_token_ready_provider.dart';
@@ -311,7 +312,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       ref.invalidate(nutritionHistoryProvider);
 
       final destination = result.profileCompleted
-          ? const DashboardScreen()
+          ? const MainTabShell()
           : const HealthProfileScreen();
 
       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(

@@ -7,14 +7,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile/shared/connectivity/connectivity_utils.dart';
 import 'package:mobile/features/auth/presentation/auth_screen.dart';
-import 'package:mobile/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:mobile/features/fitness/presentation/daily_leaderboard_screen.dart';
 import 'package:mobile/features/fitness/data/steps_today_provider.dart';
-import 'package:mobile/features/nutrition/presentation/dietitian_coach_screen.dart';
-import 'package:mobile/features/nutrition/presentation/nutrition_history_screen.dart';
-import 'package:mobile/features/profile/presentation/profile_settings_screen.dart';
 import 'package:mobile/shared/profile/profile_repository.dart';
 import 'package:mobile/shared/navigation/app_bottom_nav.dart';
+import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/sqlite_offline_db.dart';
 import 'package:mobile/shared/ui/network_error_view.dart';
@@ -684,7 +681,9 @@ class _LeaderboardAttentionButtonState extends State<_LeaderboardAttentionButton
 // =====================================================================
 
 class ActivityTrackingScreen extends ConsumerStatefulWidget {
-  const ActivityTrackingScreen({super.key});
+  const ActivityTrackingScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   // Theme Colors from Design
   static const Color primaryGreen = Color(0xFF10B981);
@@ -764,38 +763,17 @@ class _ActivityTrackingScreenState extends ConsumerState<ActivityTrackingScreen>
           },
         ),
       ),
-      bottomNavigationBar: AppBottomNav(
-        activeTab: AppTab.stats,
-        onTabSelected: (tab) => _handleTab(context, tab),
-      ),
+      bottomNavigationBar: widget.showBottomNav
+          ? AppBottomNav(
+              activeTab: AppTab.stats,
+              onTabSelected: (tab) => _handleTab(context, tab),
+            )
+          : null,
     );
   }
 
   void _handleTab(BuildContext context, AppTab tab) {
-    switch (tab) {
-      case AppTab.home:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-        return;
-      case AppTab.history:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const NutritionHistoryScreen()),
-        );
-        return;
-      case AppTab.stats:
-        return;
-      case AppTab.dietitian:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DietitianCoachScreen()),
-        );
-        return;
-      case AppTab.profile:
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-        );
-        return;
-    }
+    MainTabShell.open(context, tab: tab);
   }
 
   // --- UI Components ---
