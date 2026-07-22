@@ -41,6 +41,7 @@ class FoodScanService
         'plantain',
         'rice',
         'salad',
+        'avocado',
         'waakye',
         'yam',
         'groundnut-soup',
@@ -252,6 +253,9 @@ class FoodScanService
         'pizza' => 'pizza',
         'pasta' => 'pasta',
         'salad' => 'salad',
+        'avocado' => 'avocado',
+        'avocado slice' => 'avocado',
+        'sliced avocado' => 'avocado',
         'chicken' => 'chicken',
         'meat' => 'meat',
         'goat meat' => 'meat',
@@ -282,6 +286,7 @@ class FoodScanService
         'plantain' => 'Plantain',
         'rice' => 'Rice',
         'salad' => 'Salad',
+        'avocado' => 'Avocado',
         'waakye' => 'Waakye',
         'yam' => 'Yam',
         'groundnut-soup' => 'Groundnut soup',
@@ -295,6 +300,8 @@ class FoodScanService
         'kyinkyinga' => 'Kyinkyinga',
     ];
 
+    private bool $geminiUnavailable = false;
+
     /**
      * @return array{
      *   provider: string,
@@ -304,6 +311,7 @@ class FoodScanService
      */
     public function scan(UploadedFile $image): array
     {
+        $this->geminiUnavailable = false;
         $hfThreshold = (float) config('services.food_scan.hf_confidence_threshold', 0.55);
         $hfRows = $this->scanGhanaClassifier($image);
 
@@ -357,7 +365,7 @@ class FoodScanService
 
         return [
             'provider' => 'hybrid',
-            'strategy' => 'none',
+            'strategy' => $this->geminiUnavailable ? 'provider_unavailable' : 'none',
             'detections' => [],
         ];
     }
@@ -461,75 +469,108 @@ class FoodScanService
     {
         $apiKey = trim((string) config('services.food_scan.gemini_api_key', ''));
         if ($apiKey === '') {
+            $this->geminiUnavailable = true;
+
             return [];
         }
 
-        $model = (string) config('services.food_scan.gemini_model', 'gemini-2.5-flash');
         $mime = $image->getMimeType() ?: 'image/jpeg';
 
         try {
             $b64 = base64_encode((string) file_get_contents($image->getRealPath()));
-
-            $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
-
-            $response = Http::timeout((int) config('services.food_scan.timeout', 90))
-                ->withQueryParameters(['key' => $apiKey])
-                ->post($url, [
-                    'contents' => [
-                        [
-                            'parts' => [
-                                [
-                                    'text' => $this->geminiPrompt(),
-                                ],
-                                [
-                                    'inline_data' => [
-                                        'mime_type' => $mime,
-                                        'data' => $b64,
-                                    ],
+            $payload = [
+                'contents' => [
+                    [
+                        'parts' => [
+                            [
+                                'text' => $this->geminiPrompt(),
+                            ],
+                            [
+                                'inline_data' => [
+                                    'mime_type' => $mime,
+                                    'data' => $b64,
                                 ],
                             ],
                         ],
                     ],
-                    'generationConfig' => [
-                        'temperature' => 0.15,
-                        'responseMimeType' => 'application/json',
-                    ],
-                ]);
+                ],
+                'generationConfig' => [
+                    'temperature' => 0.15,
+                    'responseMimeType' => 'application/json',
+                ],
+            ];
 
-            if (! $response->successful()) {
-                return [];
-            }
+            $sawQuota = false;
+            foreach ($this->geminiModels() as $model) {
+                $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
 
-            $text = data_get($response->json(), 'candidates.0.content.parts.0.text');
-            if (! is_string($text) || trim($text) === '') {
-                return [];
-            }
+                $response = Http::timeout((int) config('services.food_scan.timeout', 90))
+                    ->withQueryParameters(['key' => $apiKey])
+                    ->post($url, $payload);
 
-            $parsed = json_decode($text, true);
-            if (! is_array($parsed)) {
-                return [];
-            }
+                if ($response->status() === 429 || $response->status() === 403) {
+                    $sawQuota = true;
 
-            $foods = $parsed['foods'] ?? $parsed['detections'] ?? $parsed['items'] ?? [];
-            if (! is_array($foods)) {
-                return [];
-            }
-
-            $rows = [];
-            foreach ($foods as $food) {
-                if (! is_array($food)) {
                     continue;
                 }
-                $rows[] = [
-                    'name' => (string) ($food['name'] ?? $food['class_name'] ?? ''),
-                    'confidence' => (float) ($food['confidence'] ?? $food['score'] ?? 0),
-                ];
+
+                if (! $response->successful()) {
+                    continue;
+                }
+
+                $text = data_get($response->json(), 'candidates.0.content.parts.0.text');
+                if (! is_string($text) || trim($text) === '') {
+                    continue;
+                }
+
+                $parsed = json_decode($text, true);
+                if (! is_array($parsed)) {
+                    continue;
+                }
+
+                $foods = $parsed['foods'] ?? $parsed['detections'] ?? $parsed['items'] ?? [];
+                if (! is_array($foods)) {
+                    continue;
+                }
+
+                $rows = [];
+                foreach ($foods as $food) {
+                    if (! is_array($food)) {
+                        continue;
+                    }
+                    $rows[] = [
+                        'name' => (string) ($food['name'] ?? $food['class_name'] ?? ''),
+                        'confidence' => (float) ($food['confidence'] ?? $food['score'] ?? 0),
+                    ];
+                }
+
+                return $rows;
             }
 
-            return $rows;
+            $this->geminiUnavailable = $sawQuota;
+
+            return [];
         } catch (\Throwable) {
+            $this->geminiUnavailable = true;
+
             return [];
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function geminiModels(): array
+    {
+        $primary = trim((string) config('services.food_scan.gemini_model', 'gemini-2.0-flash'));
+        $fallbacks = [
+            'gemini-2.0-flash',
+            'gemini-2.0-flash-lite',
+            'gemini-flash-latest',
+            'gemini-2.5-flash',
+        ];
+
+        return array_values(array_unique(array_filter([$primary, ...$fallbacks])));
     }
 
     private function geminiPrompt(): string

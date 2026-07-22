@@ -461,7 +461,7 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
   bool _isCameraInitialized = false;
   bool _isFlashOn = false;
   bool _navigatedToHistoryAfterSave = false;
-  /// Frozen still shown while AI runs — user can put the phone down.
+  /// Frozen still shown while AI runs.
   String? _capturedImagePath;
   final _imagePicker = ImagePicker();
 
@@ -656,23 +656,8 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
 
   Widget _buildMiddlePane(AsyncValue<FoodScanResult?> scanState) {
     if (scanState.isLoading) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(color: Colors.white),
-            const SizedBox(height: 16),
-                          Text(
-                            'Photo saved — you can put the phone down.\nAI is detecting the food…',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.inter(
-                              color: Colors.white70,
-                              fontSize: 13,
-                              height: 1.4,
-                            ),
-                          ),
-          ],
-        ),
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
       );
     }
 
@@ -825,16 +810,6 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
                     color: Colors.white.withValues(alpha: 0.9),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'We photograph the plate once, then AI detects the food.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    color: Colors.white.withValues(alpha: 0.6),
-                    fontSize: 12,
-                    height: 1.4,
                   ),
                 ),
               ],

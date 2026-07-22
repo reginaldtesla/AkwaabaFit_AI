@@ -282,13 +282,60 @@ class FoodScanTest extends TestCase
         $user = User::factory()->create();
         $token = $user->createToken('test')->plainTextToken;
 
-        // Providers failing soft-returns empty rows → not_food, not a hard 503.
+        // Providers failing soft-returns empty rows → not_food with busy message when Gemini is rate-limited.
         $this->withHeader('Authorization', "Bearer {$token}")
             ->post('/api/nutrition/scan', ['image' => $this->sampleJpeg('desk.jpg')])
             ->assertStatus(200)
             ->assertJsonPath('status', 'success')
             ->assertJsonPath('not_food', true)
+            ->assertJsonPath('strategy', 'provider_unavailable')
+            ->assertJsonPath('message', 'Food AI is temporarily busy. Try again in a minute.')
             ->assertJsonPath('detections', []);
+    }
+
+    public function test_gemini_tries_fallback_model_after_quota_error(): void
+    {
+        config([
+            'services.food_scan.huggingface_token' => 'hf-test',
+            'services.food_scan.gemini_api_key' => 'gemini-test',
+            'services.food_scan.gemini_model' => 'gemini-2.5-flash',
+            'services.food_scan.hf_confidence_threshold' => 0.55,
+        ]);
+
+        Http::fake([
+            'router.huggingface.co/*' => Http::response([
+                ['label' => 'unknown', 'score' => 0.10],
+            ]),
+            'generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash*' => Http::response([
+                'error' => ['message' => 'quota exceeded'],
+            ], 429),
+            'generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash*' => Http::response([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                [
+                                    'text' => json_encode([
+                                        'foods' => [
+                                            ['name' => 'avocado', 'confidence' => 0.91],
+                                        ],
+                                    ]),
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $user = User::factory()->create();
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->post('/api/nutrition/scan', ['image' => $this->sampleJpeg('avocado.jpg')])
+            ->assertStatus(200)
+            ->assertJsonPath('strategy', 'gemini_flash_fallback')
+            ->assertJsonPath('detections.0.class_name', 'avocado');
     }
 
     private function sampleJpeg(string $name): UploadedFile

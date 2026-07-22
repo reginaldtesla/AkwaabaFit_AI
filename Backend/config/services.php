@@ -64,7 +64,8 @@ return [
         /** Detections below this are treated as "not food" (reduces false positives). */
         'min_detection_confidence' => (float) env('FOOD_SCAN_MIN_CONFIDENCE', 0.30),
         'gemini_api_key' => env('GEMINI_API_KEY'),
-        'gemini_model' => env('FOOD_SCAN_GEMINI_MODEL', 'gemini-2.5-flash'),
+        // 2.0 Flash has a higher free-tier allowance than 2.5 Flash on many keys.
+        'gemini_model' => env('FOOD_SCAN_GEMINI_MODEL', 'gemini-2.0-flash'),
     ],
 
     /*

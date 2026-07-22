@@ -198,13 +198,17 @@ class NutritionController extends Controller
         }
 
         if ($result['detections'] === []) {
+            $unavailable = ($result['strategy'] ?? '') === 'provider_unavailable';
+
             return response()->json([
                 'status' => 'success',
                 'not_food' => true,
                 'provider' => $result['provider'],
                 'strategy' => $result['strategy'],
                 'detections' => [],
-                'message' => 'Not recognized',
+                'message' => $unavailable
+                    ? 'Food AI is temporarily busy. Try again in a minute.'
+                    : 'Not recognized',
             ]);
         }
 

@@ -264,6 +264,18 @@
     "insight_message": null
   },
   {
+    "class_name": "avocado",
+    "display_name": "Avocado",
+    "calories": 160,
+    "protein_g": 2,
+    "carbs_g": 9,
+    "fat_g": 15,
+    "iron_mg": 0.6,
+    "folate_mcg": 81,
+    "safety_status": "safe",
+    "insight_message": null
+  },
+  {
     "class_name": "kontomire",
     "display_name": "Kontomire stew",
     "calories": 220,
