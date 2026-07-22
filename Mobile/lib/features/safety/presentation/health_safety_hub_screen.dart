@@ -601,6 +601,7 @@ class _RotatingHealthTipsCardState extends ConsumerState<_RotatingHealthTipsCard
   int _index = 0;
   bool _refreshing = false;
   String _source = 'local';
+  SafetyMealRecommendations? _mealRecommendations;
   Timer? _timer;
   late final AnimationController _progress;
 
@@ -667,6 +668,7 @@ class _RotatingHealthTipsCardState extends ConsumerState<_RotatingHealthTipsCard
           ? batch.tips
           : List<SafetyHealthTip>.from(kSafetyHealthTipsLocal);
       _source = batch.source;
+      _mealRecommendations = batch.mealRecommendations;
       if (resetIndex) _index = 0;
       if (_index >= _tips.length) _index = 0;
       _refreshing = false;
@@ -805,7 +807,173 @@ class _RotatingHealthTipsCardState extends ConsumerState<_RotatingHealthTipsCard
             ],
           ),
         ),
+        if (_mealRecommendations != null &&
+            _mealRecommendations!.recommendations.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _MealHistoryRecommendationsCard(advice: _mealRecommendations!),
+        ],
       ],
+    );
+  }
+}
+
+class _MealHistoryRecommendationsCard extends StatelessWidget {
+  const _MealHistoryRecommendationsCard({required this.advice});
+
+  final SafetyMealRecommendations advice;
+
+  static const Color _primary = Color(0xFF1A5D1A);
+  static const Color _softTint = Color(0xFFF2F8F2);
+  static const Color _textMain = Color(0xFF334155);
+  static const Color _textLight = Color(0xFF64748B);
+  static const Color _rule = Color(0xFFE2E8F0);
+
+  IconData _iconFor(String category) {
+    switch (category.toLowerCase()) {
+      case 'protein':
+        return Icons.egg_outlined;
+      case 'balance':
+      case 'fibre':
+        return Icons.eco_outlined;
+      case 'hydration':
+        return Icons.water_drop_outlined;
+      case 'portion':
+        return Icons.restaurant_outlined;
+      case 'energy':
+        return Icons.bolt_outlined;
+      default:
+        return Icons.favorite_outline;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _rule),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: _softTint,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.restaurant_menu, color: _primary, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      advice.headline,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: _textMain,
+                      ),
+                    ),
+                    Text(
+                      advice.mealsReviewed == 0
+                          ? 'From Nutrition History'
+                          : 'Based on ${advice.mealsReviewed} logged meal${advice.mealsReviewed == 1 ? '' : 's'}',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (advice.summary.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              advice.summary,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _textLight,
+                height: 1.45,
+              ),
+            ),
+          ],
+          if (advice.recentMeals.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: advice.recentMeals.take(5).map((name) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: _softTint,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    name,
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _primary,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+          const SizedBox(height: 14),
+          ...advice.recommendations.map((rec) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(_iconFor(rec.category), color: _primary, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          rec.title,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _textMain,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          rec.detail,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: _textLight,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

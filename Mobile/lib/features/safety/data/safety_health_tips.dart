@@ -107,10 +107,85 @@ class SafetyHealthTipsBatch {
   const SafetyHealthTipsBatch({
     required this.tips,
     required this.source,
+    this.mealRecommendations,
   });
 
   final List<SafetyHealthTip> tips;
   final String source;
+  final SafetyMealRecommendations? mealRecommendations;
+}
+
+class SafetyMealRecommendation {
+  const SafetyMealRecommendation({
+    required this.category,
+    required this.title,
+    required this.detail,
+  });
+
+  final String category;
+  final String title;
+  final String detail;
+
+  factory SafetyMealRecommendation.fromJson(Map<String, dynamic> json) {
+    return SafetyMealRecommendation(
+      category: (json['category'] ?? 'habit').toString(),
+      title: (json['title'] ?? '').toString(),
+      detail: (json['detail'] ?? '').toString(),
+    );
+  }
+}
+
+class SafetyMealRecommendations {
+  const SafetyMealRecommendations({
+    required this.headline,
+    required this.summary,
+    required this.recommendations,
+    required this.mealsReviewed,
+    required this.recentMeals,
+    required this.source,
+  });
+
+  final String headline;
+  final String summary;
+  final List<SafetyMealRecommendation> recommendations;
+  final int mealsReviewed;
+  final List<String> recentMeals;
+  final String source;
+
+  factory SafetyMealRecommendations.fromJson(Map<String, dynamic> json) {
+    final recsRaw = json['recommendations'];
+    final recs = <SafetyMealRecommendation>[];
+    if (recsRaw is List) {
+      for (final item in recsRaw) {
+        if (item is! Map) continue;
+        final rec = SafetyMealRecommendation.fromJson(
+          item.map((k, dynamic v) => MapEntry(k.toString(), v)),
+        );
+        if (rec.title.trim().isEmpty || rec.detail.trim().isEmpty) continue;
+        recs.add(rec);
+      }
+    }
+
+    final mealsRaw = json['recentMeals'] ?? json['recent_meals'];
+    final meals = <String>[];
+    if (mealsRaw is List) {
+      for (final m in mealsRaw) {
+        final name = m.toString().trim();
+        if (name.isNotEmpty) meals.add(name);
+      }
+    }
+
+    return SafetyMealRecommendations(
+      headline: (json['headline'] ?? 'Coaching from your History').toString(),
+      summary: (json['summary'] ?? '').toString(),
+      recommendations: recs,
+      mealsReviewed: (json['mealsReviewed'] ?? json['meals_reviewed'] ?? 0) is num
+          ? ((json['mealsReviewed'] ?? json['meals_reviewed'] ?? 0) as num).toInt()
+          : int.tryParse('${json['mealsReviewed'] ?? json['meals_reviewed'] ?? 0}') ?? 0,
+      recentMeals: meals,
+      source: (json['source'] ?? 'rules').toString(),
+    );
+  }
 }
 
 List<SafetyHealthTip> mergeSafetyTips(
@@ -204,9 +279,18 @@ Future<SafetyHealthTipsBatch> fetchSafetyHealthTips({
     final merged = mergeSafetyTips(tips, kSafetyHealthTipsLocal);
     final source = (raw['source'] ?? 'mixed').toString();
 
+    SafetyMealRecommendations? mealRecs;
+    final mealRaw = raw['mealRecommendations'] ?? raw['meal_recommendations'];
+    if (mealRaw is Map) {
+      mealRecs = SafetyMealRecommendations.fromJson(
+        mealRaw.map((k, dynamic v) => MapEntry(k.toString(), v)),
+      );
+    }
+
     return SafetyHealthTipsBatch(
       tips: merged,
       source: source == 'fallback' ? 'local' : source,
+      mealRecommendations: mealRecs,
     );
   } catch (_) {
     return const SafetyHealthTipsBatch(

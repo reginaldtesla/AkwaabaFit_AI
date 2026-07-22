@@ -22,12 +22,14 @@ class SafetyController extends Controller
             weatherMain: $validated['weather_main'] ?? null,
             airQualityAqi: isset($validated['air_quality_aqi']) ? (int) $validated['air_quality_aqi'] : null,
             forceRefresh: $request->boolean('refresh'),
+            user: $request->user(),
         );
 
         return response()->json([
             'status' => 'success',
             'source' => $payload['source'],
             'tips' => $payload['tips'],
+            'mealRecommendations' => $payload['mealRecommendations'],
         ]);
     }
 }

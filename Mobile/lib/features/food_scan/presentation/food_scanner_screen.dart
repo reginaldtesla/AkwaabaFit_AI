@@ -1098,6 +1098,24 @@ class _FoodScannerScreenState extends ConsumerState<FoodScannerScreen> {
                       ],
                       if (result.detectedItems.length > 1) ...[
                         const SizedBox(height: 10),
+                        Text(
+                          'Tap to include what you ate',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blueGrey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Highlighted items are logged. Tap again to remove.',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade500,
+                            height: 1.3,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
