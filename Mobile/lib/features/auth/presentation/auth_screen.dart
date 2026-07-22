@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ import 'package:mobile/shared/ui/app_brand_logo.dart';
 import 'package:mobile/shared/config/app_config.dart';
 import 'package:mobile/shared/offline/offline_prefs.dart';
 import 'package:mobile/shared/offline/offline_session_cleanup.dart';
+import 'package:mobile/shared/notifications/push_notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // =====================================================================
@@ -217,6 +219,11 @@ class AuthNotifier extends AsyncNotifier<void> {
       await ref.read(profileRepositoryProvider).syncPendingIfAny();
     } catch (_) {}
 
+    // Unregister FCM while Sanctum token still works.
+    try {
+      await PushNotificationService.instance.unregister();
+    } catch (_) {}
+
     final token = await readSanctumToken(storage: _storage);
     if (token != null && token.toString().trim().isNotEmpty) {
       try {
@@ -310,6 +317,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       ref.invalidate(sanctumTokenReadyProvider);
       ref.invalidate(dashboardDataProvider);
       ref.invalidate(nutritionHistoryProvider);
+      unawaited(PushNotificationService.instance.syncRegistration());
 
       final destination = result.profileCompleted
           ? const MainTabShell()

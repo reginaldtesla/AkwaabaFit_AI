@@ -20,6 +20,7 @@ import 'package:mobile/shared/weather/device_weather_service.dart';
 import 'package:mobile/shared/fitness/leaderboard_provider.dart';
 import 'package:mobile/shared/fitness/step_goal_notification_listener.dart';
 import 'package:mobile/shared/notifications/admin_announcement_sync.dart';
+import 'package:mobile/shared/notifications/push_notification_service.dart';
 import 'package:mobile/shared/ui/app_scaffold_messenger.dart';
 
 Future<void> main() async {
@@ -38,11 +39,15 @@ Future<void> main() async {
     GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w500),
     GoogleFonts.inter(),
   ]);
+
+  await PushNotificationService.instance.ensureInitialized();
+
   runApp(const ProviderScope(child: MyApp()));
 
   // Start step tracking after the first frame so launch UI is not blocked.
   WidgetsBinding.instance.addPostFrameCallback((_) {
     unawaited(BackgroundStepTrackingBootstrap.initializeOnAppStart());
+    unawaited(PushNotificationService.instance.syncRegistration());
   });
 }
 

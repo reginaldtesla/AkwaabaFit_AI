@@ -80,16 +80,31 @@ This powers condition-aware coaching, Ghana step goals, water targets, and meal-
 Staff can message every user from **https://api.tesnet.xyz/admin/broadcast** (after signing in with `ADMIN_PASSWORD`).
 
 - Users see the message in the **app notification bell**
-- The phone also shows a **system notification** when the app syncs (on open/resume, and periodically in the background step service)
+- The phone shows a **system notification** when the app syncs (open/resume/background)
+- With Firebase on the phone **and** server credentials, messages also arrive when the app is **fully closed** (FCM)
 
-For push while the app is fully closed, add Firebase:
+### Server FCM
 
 ```env
 FIREBASE_CREDENTIALS=/absolute/path/to/firebase-service-account.json
 FIREBASE_PROJECT_ID=your-firebase-project-id
 ```
 
-Then install `google-services.json` in the Android app and register FCM device tokens (API: `POST /api/device-tokens`). Until then, sync-based delivery still covers inbox + tray for active users.
+```bash
+php artisan config:clear
+php artisan config:cache
+```
+
+### Mobile FCM
+
+1. `Mobile/android/app/google-services.json` must match `applicationId` (`com.example.mobile` today)
+2. App registers tokens via `POST /api/device-tokens` after login
+3. Ship a new APK so devices register; admin broadcast page shows token count
+
+API:
+- `GET /api/announcements?after_id=`
+- `POST /api/device-tokens` `{ "token", "platform" }`
+- `DELETE /api/device-tokens` `{ "token" }`
 
 ## 6. New API endpoints
 
@@ -103,8 +118,11 @@ Then install `google-services.json` in the Android app and register FCM device t
 | GET | `/accountability` | Partner code + linked partner |
 | POST | `/accountability/link` | Link by partner code |
 | DELETE | `/accountability/partner` | Unlink |
+| GET | `/announcements` | Admin broadcast sync for inbox |
+| POST | `/device-tokens` | Register FCM device token |
+| DELETE | `/device-tokens` | Unregister FCM device token |
 
-## 6. Smoke test
+## 7. Smoke test
 
 1. Register a new user → complete both profile steps  
 2. Home → water card → add a glass  
