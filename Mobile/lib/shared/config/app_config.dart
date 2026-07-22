@@ -12,6 +12,14 @@ class AppConfig {
     defaultValue: 'https://api.tesnet.xyz/api',
   );
 
+  /// Google Sign-In Web client ID (OAuth "Web application").
+  /// Required so the ID token `aud` matches the backend `GOOGLE_CLIENT_ID`.
+  /// Example: `flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=xxxxx.apps.googleusercontent.com`
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
+
   /// Same host as [apiBaseUrl], without `/api`.
   static String get serverBaseUrl {
     final v = apiBaseUrl;

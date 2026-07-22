@@ -21,6 +21,7 @@ Route::get('/app/version', [AppVersionController::class, 'show']);
 Route::get('/health/options', [HealthOptionsController::class, 'index']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/auth/google', [AuthController::class, 'google']);
 Route::post('/forgot-password', [PasswordResetController::class, 'forgot']);
 Route::post('/reset-password', [PasswordResetController::class, 'reset']);
 

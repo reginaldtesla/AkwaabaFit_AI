@@ -69,10 +69,16 @@ return [
     ],
 
     /*
-    | Virtual dietitian (Gemini + rule fallback). Reuses GEMINI_API_KEY from food_scan.
+    | Google Sign-In (mobile ID token verification).
+    | Add the Web client ID (used as serverClientId) and optionally Android/iOS client IDs.
     */
-    'dietitian' => [
-        'gemini_timeout' => (int) env('DIETITIAN_GEMINI_TIMEOUT', 45),
+    'google' => [
+        'client_ids' => array_values(array_filter([
+            env('GOOGLE_CLIENT_ID'),
+            env('GOOGLE_WEB_CLIENT_ID'),
+            env('GOOGLE_ANDROID_CLIENT_ID'),
+            env('GOOGLE_IOS_CLIENT_ID'),
+        ])),
     ],
 
 ];

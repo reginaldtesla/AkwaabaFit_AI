@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'forgot_password_screen.dart';
@@ -85,90 +86,149 @@ class AuthNotifier extends AsyncNotifier<void> {
         options: Options(headers: {'Accept': 'application/json'}),
       );
 
-      // Save the Sanctum token securely
-      final token = response.data['token'] ?? response.data['access_token'];
-      if (token == null || token.toString().isEmpty) {
-        state = AsyncValue.error(
-          'Authentication succeeded but no token was returned by the server.',
-          StackTrace.current,
-        );
-        return null;
-      }
-
-      await _storage.write(key: sanctumTokenKey, value: token.toString());
-
-      // Confirm token is readable before the UI navigates (avoids dashboard → login flash).
-      final persisted = await readSanctumToken(storage: _storage);
-      if (persisted == null) {
-        state = AsyncValue.error(
-          'Signed in, but this device could not save your session. Try again.',
-          StackTrace.current,
-        );
-        return null;
-      }
-
-      final userRaw = response.data['user'];
-      final newId = userRaw is Map ? userRaw['id']?.toString() : null;
-      if (newId != null && newId.isNotEmpty) {
-        // Wipes only when a *different* account signs in on this phone.
-        await OfflineSessionCleanup.onAuthenticatedUserId(newId);
-      } else {
-        // Cannot scope caches without a user id — clear to avoid cross-account bleed.
-        await OfflineSessionCleanup.wipeDeviceCachesForAccountSwitch();
-      }
-
-      var profileCompleted = false;
-      if (userRaw is Map) {
-        profileCompleted = userRaw['profile_completed'] == true;
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool(
-            OfflinePrefsKeys.profileCompleteCached,
-            profileCompleted,
-          );
-        } catch (_) {}
-      }
-
-      // Server is source of truth: refill this account's meal history into SQLite.
-      try {
-        await ref.read(nutritionRepositoryProvider).rehydrateHistory();
-      } catch (_) {}
-      ref.invalidate(nutritionHistoryProvider);
-
-      state = const AsyncValue.data(null);
-      return AuthSuccess(profileCompleted: profileCompleted);
+      return await _finalizeAuthResponse(response.data);
     } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      final data = e.response?.data;
+      return _handleAuthDioError(e);
+    }
+  }
 
-      String? message;
-      if (data is Map) {
-        final map = data.map((k, v) => MapEntry(k.toString(), v));
-        final m = map['message'];
-        if (m is String && m.trim().isNotEmpty) message = m.trim();
+  Future<AuthSuccess?> authenticateWithGoogle() async {
+    state = const AsyncValue.loading();
+    try {
+      final google = GoogleSignIn.instance;
+      final serverClientId = AppConfig.googleServerClientId.trim();
+      await google.initialize(
+        serverClientId: serverClientId.isEmpty ? null : serverClientId,
+      );
 
-        // Laravel validation errors: { errors: { field: [..] } }
-        final errors = map['errors'];
-        if (message == null && errors is Map && errors.isNotEmpty) {
-          final firstKey = errors.keys.first;
-          final firstVal = errors[firstKey];
-          if (firstVal is List && firstVal.isNotEmpty) {
-            message = firstVal.first.toString();
-          }
-        }
+      final account = await google.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        state = AsyncValue.error(
+          'Google did not return a sign-in token. Check GOOGLE_SERVER_CLIENT_ID.',
+          StackTrace.current,
+        );
+        return null;
       }
 
-      // Friendly fallbacks for common auth failures
-      message ??= switch (status) {
-        401 => 'Incorrect username, phone number, or password.',
-        404 => 'Account not found. Please sign up.',
-        422 => 'Please check your details and try again.',
-        _ => 'Connection error. Please try again.',
-      };
+      final response = await _dio.post(
+        '/auth/google',
+        data: {
+          'id_token': idToken,
+          'device_name': 'AkwaabaFit Google (${Platform.operatingSystem})',
+        },
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
 
-      state = AsyncValue.error(message, StackTrace.current);
+      return await _finalizeAuthResponse(response.data);
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        state = const AsyncValue.data(null);
+        return null;
+      }
+      state = AsyncValue.error(
+        'Google sign-in failed. Please try again.',
+        StackTrace.current,
+      );
+      return null;
+    } on DioException catch (e) {
+      return _handleAuthDioError(e);
+    } catch (e, st) {
+      state = AsyncValue.error(
+        'Google sign-in failed. Please try again.',
+        st,
+      );
       return null;
     }
+  }
+
+  Future<AuthSuccess?> _finalizeAuthResponse(dynamic raw) async {
+    if (raw is! Map) {
+      state = AsyncValue.error(
+        'Unexpected server response. Please try again.',
+        StackTrace.current,
+      );
+      return null;
+    }
+
+    final token = raw['token'] ?? raw['access_token'];
+    if (token == null || token.toString().isEmpty) {
+      state = AsyncValue.error(
+        'Authentication succeeded but no token was returned by the server.',
+        StackTrace.current,
+      );
+      return null;
+    }
+
+    await _storage.write(key: sanctumTokenKey, value: token.toString());
+
+    final persisted = await readSanctumToken(storage: _storage);
+    if (persisted == null) {
+      state = AsyncValue.error(
+        'Signed in, but this device could not save your session. Try again.',
+        StackTrace.current,
+      );
+      return null;
+    }
+
+    final userRaw = raw['user'];
+    final newId = userRaw is Map ? userRaw['id']?.toString() : null;
+    if (newId != null && newId.isNotEmpty) {
+      await OfflineSessionCleanup.onAuthenticatedUserId(newId);
+    } else {
+      await OfflineSessionCleanup.wipeDeviceCachesForAccountSwitch();
+    }
+
+    var profileCompleted = false;
+    if (userRaw is Map) {
+      profileCompleted = userRaw['profile_completed'] == true;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(
+          OfflinePrefsKeys.profileCompleteCached,
+          profileCompleted,
+        );
+      } catch (_) {}
+    }
+
+    try {
+      await ref.read(nutritionRepositoryProvider).rehydrateHistory();
+    } catch (_) {}
+    ref.invalidate(nutritionHistoryProvider);
+
+    state = const AsyncValue.data(null);
+    return AuthSuccess(profileCompleted: profileCompleted);
+  }
+
+  AuthSuccess? _handleAuthDioError(DioException e) {
+    final status = e.response?.statusCode;
+    final data = e.response?.data;
+
+    String? message;
+    if (data is Map) {
+      final map = data.map((k, v) => MapEntry(k.toString(), v));
+      final m = map['message'];
+      if (m is String && m.trim().isNotEmpty) message = m.trim();
+
+      final errors = map['errors'];
+      if (message == null && errors is Map && errors.isNotEmpty) {
+        final firstKey = errors.keys.first;
+        final firstVal = errors[firstKey];
+        if (firstVal is List && firstVal.isNotEmpty) {
+          message = firstVal.first.toString();
+        }
+      }
+    }
+
+    message ??= switch (status) {
+      401 => 'Incorrect username, phone number, or password.',
+      404 => 'Account not found. Please sign up.',
+      422 => 'Please check your details and try again.',
+      _ => 'Connection error. Please try again.',
+    };
+
+    state = AsyncValue.error(message, StackTrace.current);
+    return null;
   }
 
   Future<bool> checkProfileCompleted() async {
@@ -292,7 +352,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         );
 
     if (!mounted) return;
+    await _handleAuthResult(result, fromGoogle: false);
+  }
 
+  Future<void> _continueWithGoogle() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    final result =
+        await ref.read(authProvider.notifier).authenticateWithGoogle();
+    if (!mounted) return;
+    await _handleAuthResult(result, fromGoogle: true);
+  }
+
+  Future<void> _handleAuthResult(
+    AuthSuccess? result, {
+    required bool fromGoogle,
+  }) async {
     if (result != null) {
       ref.invalidate(sanctumTokenReadyProvider);
       ref.invalidate(dashboardDataProvider);
@@ -302,8 +378,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           ? const DashboardScreen()
           : const HealthProfileScreen();
 
-      // Navigate first — snackbar on the auth screen context often never appears
-      // on the dashboard after the route is replaced.
       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => destination),
         (_) => false,
@@ -312,38 +386,32 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final messenger = rootScaffoldMessengerKey.currentState;
         if (messenger == null) return;
-        if (_isLogin) {
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text(
-                result.profileCompleted
-                    ? 'Welcome back!'
-                    : 'Signed in — finish your health profile to continue.',
-              ),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        } else {
-          messenger.showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Account created. Let\'s set up your health profile.',
-              ),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        final message = result.profileCompleted
+            ? (fromGoogle ? 'Signed in with Google!' : 'Welcome back!')
+            : (fromGoogle
+                ? 'Signed in with Google — finish your health profile to continue.'
+                : (_isLogin
+                    ? 'Signed in — finish your health profile to continue.'
+                    : 'Account created. Let\'s set up your health profile.'));
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
       });
     } else {
-      // AuthNotifier already sets a user-friendly error message; keep a simple fallback too.
       final err = ref.read(authProvider).error?.toString();
       if (err != null && err.isNotEmpty) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login failed. Please try again.'),
+        SnackBar(
+          content: Text(
+            fromGoogle
+                ? 'Google sign-in was cancelled.'
+                : 'Login failed. Please try again.',
+          ),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -527,6 +595,46 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Expanded(child: Divider(color: _border)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'or',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _textMuted,
+                    ),
+                  ),
+                ),
+                const Expanded(child: Divider(color: _border)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: authState.isLoading ? null : _continueWithGoogle,
+                icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
+                label: Text(
+                  'Continue with Google',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _textPrimary,
+                  side: const BorderSide(color: _border),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
               ),
             ),
           ],
