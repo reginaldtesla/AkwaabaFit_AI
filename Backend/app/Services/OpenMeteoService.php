@@ -90,23 +90,27 @@ class OpenMeteoService
      */
     private function fetch(float $lat, float $lon, string $fallbackLabel): array
     {
-        $forecast = Http::timeout(8)->get('https://api.open-meteo.com/v1/forecast', [
-            'latitude' => $lat,
-            'longitude' => $lon,
-            'current' => 'temperature_2m,weather_code',
-            'timezone' => 'auto',
+        $responses = Http::pool(fn ($pool) => [
+            $pool->as('forecast')->timeout(3)->get('https://api.open-meteo.com/v1/forecast', [
+                'latitude' => $lat,
+                'longitude' => $lon,
+                'current' => 'temperature_2m,weather_code',
+                'timezone' => 'auto',
+            ]),
+            $pool->as('air')->timeout(3)->get('https://air-quality-api.open-meteo.com/v1/air-quality', [
+                'latitude' => $lat,
+                'longitude' => $lon,
+                'current' => 'us_aqi,pm2_5,pm10',
+                'timezone' => 'auto',
+            ]),
         ]);
 
-        $air = Http::timeout(8)->get('https://air-quality-api.open-meteo.com/v1/air-quality', [
-            'latitude' => $lat,
-            'longitude' => $lon,
-            'current' => 'us_aqi,pm2_5,pm10',
-            'timezone' => 'auto',
-        ]);
+        $forecast = $responses['forecast'];
+        $air = $responses['air'];
 
         $temp = 0.0;
         $code = null;
-        if ($forecast->ok()) {
+        if (! $forecast instanceof \Throwable && $forecast->ok()) {
             $temp = (float) data_get($forecast->json(), 'current.temperature_2m', 0.0);
             $rawCode = data_get($forecast->json(), 'current.weather_code');
             $code = is_numeric($rawCode) ? (int) $rawCode : null;
@@ -115,7 +119,7 @@ class OpenMeteoService
         $aqi = null;
         $pm25 = null;
         $pm10 = null;
-        if ($air->ok()) {
+        if (! $air instanceof \Throwable && $air->ok()) {
             $rawAqi = data_get($air->json(), 'current.us_aqi');
             $aqi = is_numeric($rawAqi) ? (int) round((float) $rawAqi) : null;
             $rawPm25 = data_get($air->json(), 'current.pm2_5');
@@ -141,7 +145,7 @@ class OpenMeteoService
     private function reverseGeocodeLabel(float $lat, float $lon, string $fallback): string
     {
         try {
-            $resp = Http::timeout(8)
+            $resp = Http::timeout(2)
                 ->withHeaders([
                     'User-Agent' => 'AkwaabaFit/1.0 (weather; contact: support@akwaabafit.com)',
                 ])

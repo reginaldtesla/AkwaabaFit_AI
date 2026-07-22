@@ -156,10 +156,16 @@ class DashboardController extends Controller
         $netKcal = $consumedKcal - $burnedKcal;
 
         [$weatherLat, $weatherLon] = WeatherCoordinates::optionalFromRequest($request);
-        [$tempCelsius, $locationLabel, $air] = app(OpenMeteoService::class)->legacyTuple(
-            $weatherLat,
-            $weatherLon,
-        );
+        try {
+            [$tempCelsius, $locationLabel, $air] = app(OpenMeteoService::class)->legacyTuple(
+                $weatherLat,
+                $weatherLon,
+            );
+        } catch (\Throwable) {
+            $tempCelsius = 0.0;
+            $locationLabel = 'Weather unavailable';
+            $air = [];
+        }
 
         [$alertTitle, $alertMessage] = $this->buildEnvironmentalAlert(
             tempCelsius: $tempCelsius,
@@ -170,22 +176,26 @@ class DashboardController extends Controller
             weatherDescription: $air['weatherDescription'] ?? null,
         );
 
-        $dietitianAdvice = app(DietitianAdviceService::class)->dailyAdvice(
-            user: $user,
-            consumedKcal: $consumedKcal,
-            consumedProteinG: $consumedProteinG,
-            consumedCarbsG: $consumedCarbsG,
-            consumedFatG: $consumedFatG,
-            targets: $targets,
-            mealsLoggedToday: $mealsLoggedToday,
-            mealsLogged7Days: $mealsLogged7Days,
-            todayMealNames: $todayMealNames,
-            alertTitle: $alertTitle,
-            alertMessage: $alertMessage,
-            todaySteps: $todaySteps,
-            stepGoal: $stepGoal,
-            burnedKcal: $burnedKcal,
-        );
+        try {
+            $dietitianAdvice = app(DietitianAdviceService::class)->dailyAdvice(
+                user: $user,
+                consumedKcal: $consumedKcal,
+                consumedProteinG: $consumedProteinG,
+                consumedCarbsG: $consumedCarbsG,
+                consumedFatG: $consumedFatG,
+                targets: $targets,
+                mealsLoggedToday: $mealsLoggedToday,
+                mealsLogged7Days: $mealsLogged7Days,
+                todayMealNames: $todayMealNames,
+                alertTitle: $alertTitle,
+                alertMessage: $alertMessage,
+                todaySteps: $todaySteps,
+                stepGoal: $stepGoal,
+                burnedKcal: $burnedKcal,
+            );
+        } catch (\Throwable) {
+            $dietitianAdvice = null;
+        }
 
         $waterGoalMl = (int) ($user->water_goal_ml
             ?: HealthProfileOptions::defaultWaterGoalMl($weightKg !== null ? (int) $weightKg : null));

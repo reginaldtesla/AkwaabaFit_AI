@@ -513,7 +513,8 @@ class DietitianAdviceService
             .'Up to 5 recommendations. nextMeal can be null if unclear. Client data: '
             .json_encode($context, JSON_UNESCAPED_UNICODE);
 
-        $parsed = $this->geminiJson($prompt);
+        // Dashboard must stay fast — phone clients time out around ~12s.
+        $parsed = $this->geminiJson($prompt, timeoutSeconds: 4, maxModels: 1);
         if ($parsed === null) {
             return null;
         }
@@ -678,7 +679,11 @@ class DietitianAdviceService
     /**
      * @return array<string, mixed>|null
      */
-    private function geminiJson(string $prompt): ?array
+    /**
+     * @param  int|null  $timeoutSeconds  Override HTTP timeout (dashboard uses a short budget).
+     * @param  int  $maxModels  Cap model fallbacks; 0 = try the full ladder.
+     */
+    private function geminiJson(string $prompt, ?int $timeoutSeconds = null, int $maxModels = 0): ?array
     {
         $apiKey = trim((string) config('services.food_scan.gemini_api_key', ''));
         if ($apiKey === '') {
@@ -687,7 +692,12 @@ class DietitianAdviceService
             return null;
         }
 
-        $timeout = (int) config('services.food_scan.timeout', 90);
+        $timeout = max(1, $timeoutSeconds ?? (int) config('services.food_scan.timeout', 90));
+        $models = $this->geminiModels();
+        if ($maxModels > 0) {
+            $models = array_slice($models, 0, $maxModels);
+        }
+
         $payload = [
             'contents' => [
                 ['parts' => [['text' => $prompt]]],
@@ -699,7 +709,7 @@ class DietitianAdviceService
         ];
 
         try {
-            foreach ($this->geminiModels() as $model) {
+            foreach ($models as $model) {
                 $url = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent";
 
                 $response = Http::timeout($timeout)

@@ -774,8 +774,8 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
   final dio = Dio(
     BaseOptions(
       baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 12),
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 25),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -805,7 +805,19 @@ final dashboardDataProvider = FutureProvider<DashboardData>((ref) async {
       ref,
       _normalizeDashboardMacrosToConsumedCalories(merged),
     );
-  } catch (_) {
+  } on DioException catch (e) {
+    debugPrint(
+      'Dashboard refresh failed: ${e.type} '
+      'status=${e.response?.statusCode} '
+      'message=${e.message}',
+    );
+    final cached = await _loadDashboardFromDevice(ref, db);
+    return cached.copyWith(
+      fromOfflineCache: true,
+      networkInterfaceUp: online,
+    );
+  } catch (e) {
+    debugPrint('Dashboard refresh failed: $e');
     final cached = await _loadDashboardFromDevice(ref, db);
     return cached.copyWith(
       fromOfflineCache: true,
