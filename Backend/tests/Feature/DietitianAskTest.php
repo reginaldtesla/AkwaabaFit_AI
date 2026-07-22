@@ -64,3 +64,28 @@ test('lose-weight questions beat a gain-weight profile goal including loose typo
     expect(Str::lower($result['answer']))->toContain('weight loss');
     expect(Str::lower($result['answer']))->not->toContain('gain steadily');
 });
+
+test('common ghana food typos still get meal coaching', function () {
+    config(['services.food_scan.gemini_api_key' => '']);
+
+    $user = User::factory()->create(['name' => 'Ama']);
+    $service = app(DietitianAdviceService::class);
+
+    $result = $service->askQuestion($user, 'is jellof and wakye good every day');
+
+    expect($result['source'])->toBe('rules');
+    expect(Str::lower($result['answer']))->toMatch('/jollof|waakye|starch|portion/');
+});
+
+test('off-topic joking is redirected to diet help', function () {
+    config(['services.food_scan.gemini_api_key' => '']);
+
+    $user = User::factory()->create(['name' => 'Yaw']);
+    $service = app(DietitianAdviceService::class);
+
+    $result = $service->askQuestion($user, 'chale tell me the chelsea match score lol');
+
+    expect($result['source'])->toBe('rules');
+    expect(Str::lower($result['answer']))->toContain('healthy living');
+    expect(Str::lower($result['answer']))->not->toContain('chelsea');
+});

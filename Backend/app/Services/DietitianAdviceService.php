@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Support\BodyMetrics;
+use App\Support\DietitianAskNormalizer;
 use App\Support\GhanaianMealSuggestions;
 use App\Support\HealthAssistantCoaching;
 use App\Support\MealCopy;
@@ -167,8 +168,9 @@ class DietitianAdviceService
     {
         $question = trim(MealCopy::friendlyInsight($question) ?? $question);
         $question = Str::limit($question, 500, '');
+        $normalized = DietitianAskNormalizer::normalize($question);
 
-        $gemini = $this->tryGeminiAskQuestion($user, $question);
+        $gemini = $this->tryGeminiAskQuestion($user, $question, $normalized);
         if ($gemini !== null) {
             return [
                 'answer' => $gemini,
@@ -177,7 +179,7 @@ class DietitianAdviceService
         }
 
         return [
-            'answer' => $this->ruleBasedAskAnswer($user, $question),
+            'answer' => $this->ruleBasedAskAnswer($user, $normalized !== '' ? $normalized : $question),
             'source' => 'rules',
         ];
     }
@@ -519,7 +521,7 @@ class DietitianAdviceService
         return $this->normalizeDailyAdvicePayload($parsed);
     }
 
-    private function tryGeminiAskQuestion(User $user, string $question): ?string
+    private function tryGeminiAskQuestion(User $user, string $question, string $normalized): ?string
     {
         $context = [
             'client' => [
@@ -531,12 +533,17 @@ class DietitianAdviceService
                 'height_cm' => $user->height,
                 'activity_level' => $user->activity_level,
             ],
-            'question' => $question,
+            'question_raw' => $question,
+            'question_normalized' => $normalized,
         ];
 
         $prompt = 'You are AkwaabaFit AI, a warm Ghanaian dietitian coach in a mobile app. '
             .implode(' ', GhanaianMealSuggestions::geminiAuthenticityRules()).' '
-            .'Answer ONLY health, diet, hydration, portions, Ghanaian meals, and general wellness questions. '
+            .'Users often mistype (loose/lose, jellof/jollof, wakye/waakye) or joke around. '
+            .'Infer the real health intent from messy spelling; never scold them for typos. '
+            .'If the message is off-topic, trolling, or unrelated to diet/health, reply briefly and kindly, '
+            .'then steer them back with 1-2 concrete Ghana meal or hydration tips—do not answer football, betting, romance, or nonsense as if they were diet questions. '
+            .'Answer ONLY health, diet, hydration, portions, Ghanaian meals, and general wellness. '
             .'Refuse medical diagnosis, prescriptions, and emergencies—suggest seeing a clinician. '
             .'Keep the answer under 120 words, practical, 2nd person. No vendor or chop-bar branding. '
             .'JSON only: {"answer":"..."}. Data: '
@@ -563,6 +570,10 @@ class DietitianAdviceService
 
         if (preg_match('/\b(diagnos|prescri|medicat|cancer|pregnan|emergency|chest pain|suicid)\b/i', $question)) {
             return "I can't diagnose or prescribe, $name. For symptoms or medication questions, please see a doctor or pharmacist. I can still help with everyday Ghanaian meals, portions, and hydration.";
+        }
+
+        if (DietitianAskNormalizer::looksOffTopic($q)) {
+            return "I'm here for food and healthy living, {$name} — not random chat. Ask about jollof portions, waakye sides, water, steps, or losing/gaining weight and I'll give you a clear Ghana-friendly tip.";
         }
 
         if (str_contains($q, 'water') || str_contains($q, 'hydrat')) {
