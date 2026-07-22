@@ -70,7 +70,18 @@ class DietitianAskNormalizer
     }
 
     /**
-     * True when the text looks like trolling / unrelated chatter with no health signal.
+     * Faith / religion — treat with respect; never call it "random chat".
+     */
+    public static function looksFaithRelated(string $normalized): bool
+    {
+        return (bool) preg_match(
+            '/\b(god|jesus|christ|allah|bible|quran|church|mosque|prayer|pray|faith|religion|lord|holy spirit|amen)\b/u',
+            Str::lower($normalized),
+        );
+    }
+
+    /**
+     * True when the text looks unrelated to diet/health (no health signal).
      */
     public static function looksOffTopic(string $normalized): bool
     {
@@ -79,15 +90,12 @@ class DietitianAskNormalizer
             return true;
         }
 
-        if (preg_match('/\b(lol|lmao|haha|useless|nonsense|fool|stupid|waste time|bora|chale nothing|abt football|match score|crypto|betting|lottery|girlfriend|boyfriend|juju|sakawa)\b/u', $q)) {
-            // Still allow if they also mention health food keywords.
-            if (! self::hasHealthSignal($q)) {
-                return true;
-            }
-        }
-
         if (self::hasHealthSignal($q)) {
             return false;
+        }
+
+        if (preg_match('/\b(lol|lmao|haha|useless|nonsense|fool|stupid|waste time|bora|chale nothing|abt football|match score|crypto|betting|lottery|girlfriend|boyfriend|sakawa)\b/u', $q)) {
+            return true;
         }
 
         // Very short gibberish / random letters after normalization.

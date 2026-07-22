@@ -539,10 +539,10 @@ class DietitianAdviceService
 
         $prompt = 'You are AkwaabaFit AI, a warm Ghanaian dietitian coach in a mobile app. '
             .implode(' ', GhanaianMealSuggestions::geminiAuthenticityRules()).' '
-            .'Users often mistype (loose/lose, jellof/jollof, wakye/waakye) or joke around. '
+            .'Users often mistype (loose/lose, jellof/jollof, wakye/waakye) or send unrelated messages. '
             .'Infer the real health intent from messy spelling; never scold them for typos. '
-            .'If the message is off-topic, trolling, or unrelated to diet/health, reply briefly and kindly, '
-            .'then steer them back with 1-2 concrete Ghana meal or hydration tips—do not answer football, betting, romance, or nonsense as if they were diet questions. '
+            .'If the question is about God, faith, or religion, acknowledge it respectfully—never call it random, silly, or nonsense—then gently say you only coach on food and healthy living. '
+            .'If the message is football, betting, romance, or other non-health topics, redirect politely without sounding rude. '
             .'Answer ONLY health, diet, hydration, portions, Ghanaian meals, and general wellness. '
             .'Refuse medical diagnosis, prescriptions, and emergencies—suggest seeing a clinician. '
             .'Keep the answer under 120 words, practical, 2nd person. No vendor or chop-bar branding. '
@@ -572,8 +572,12 @@ class DietitianAdviceService
             return "I can't diagnose or prescribe, $name. For symptoms or medication questions, please see a doctor or pharmacist. I can still help with everyday Ghanaian meals, portions, and hydration.";
         }
 
+        if (DietitianAskNormalizer::looksFaithRelated($q) && ! DietitianAskNormalizer::hasHealthSignal($q)) {
+            return "That's a meaningful question, {$name}. I'm built to help with food, hydration, and healthy habits—not faith topics. If you'd like, ask me about Ghanaian meals, portions, water, or your weight goal and I'll support you there.";
+        }
+
         if (DietitianAskNormalizer::looksOffTopic($q)) {
-            return "I'm here for food and healthy living, {$name} — not random chat. Ask about jollof portions, waakye sides, water, steps, or losing/gaining weight and I'll give you a clear Ghana-friendly tip.";
+            return "I focus on diet and healthy living, {$name}. Try asking about jollof or waakye portions, water, steps, or losing/gaining weight—and I'll give you a clear Ghana-friendly tip.";
         }
 
         if (str_contains($q, 'water') || str_contains($q, 'hydrat')) {

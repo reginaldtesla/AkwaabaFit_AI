@@ -86,6 +86,21 @@ test('off-topic joking is redirected to diet help', function () {
     $result = $service->askQuestion($user, 'chale tell me the chelsea match score lol');
 
     expect($result['source'])->toBe('rules');
-    expect(Str::lower($result['answer']))->toContain('healthy living');
+    expect(Str::lower($result['answer']))->toContain('diet and healthy living');
     expect(Str::lower($result['answer']))->not->toContain('chelsea');
+    expect(Str::lower($result['answer']))->not->toContain('random chat');
+});
+
+test('faith questions are redirected respectfully', function () {
+    config(['services.food_scan.gemini_api_key' => '']);
+
+    $user = User::factory()->create(['name' => 'Darko']);
+    $service = app(DietitianAdviceService::class);
+
+    $result = $service->askQuestion($user, 'is God the king');
+
+    expect($result['source'])->toBe('rules');
+    expect(Str::lower($result['answer']))->toContain('meaningful');
+    expect(Str::lower($result['answer']))->not->toContain('random chat');
+    expect(Str::lower($result['answer']))->not->toContain('nonsense');
 });
