@@ -6,6 +6,10 @@ import 'package:mobile/shared/navigation/app_bottom_nav.dart';
 import 'package:mobile/shared/navigation/main_tab_shell.dart';
 import 'package:mobile/shared/nutrition/meal_macro_row.dart';
 import 'package:mobile/shared/nutrition/nutrition_repository.dart';
+import 'package:mobile/shared/ui/network_error_view.dart';
+import 'package:mobile/shared/ui/user_friendly_errors.dart';
+import 'package:mobile/features/food_scan/presentation/scan_meal_fab.dart';
+import 'package:mobile/features/nutrition/presentation/manual_meal_log_screen.dart';
 
 // =====================================================================
 // 1. STATE MANAGEMENT & DATA MODELS

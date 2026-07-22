@@ -41,7 +41,7 @@ class DietitianAskApi {
     }
 
     final resp = await _dio.post(
-      '/nutrition/advice/ask',
+      'nutrition/advice/ask',
       data: {'question': question.trim()},
       options: Options(
         headers: {

@@ -38,7 +38,8 @@ String userFriendlyDataLoadMessage(Object error) {
       return 'The server had a problem. Try again in a moment.';
     }
     if (code == 404) {
-      return 'That resource was not found. Try signing in again.';
+      return 'That feature is not available on the server yet. '
+          'Deploy the latest backend, or switch the app to your local API.';
     }
   }
 
