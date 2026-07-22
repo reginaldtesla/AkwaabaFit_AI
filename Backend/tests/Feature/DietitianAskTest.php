@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use App\Services\DietitianAdviceService;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 
 test('ask endpoint returns a diet coaching answer', function () {
@@ -46,4 +47,20 @@ test('dietitian service answers hydration questions with rules fallback', functi
 
     expect($result['source'])->toBe('rules');
     expect($result['answer'])->toContain('water');
+});
+
+test('lose-weight questions beat a gain-weight profile goal including loose typo', function () {
+    config(['services.food_scan.gemini_api_key' => '']);
+
+    $user = User::factory()->create([
+        'name' => 'Kofi',
+        'goal' => 'Gain weight',
+    ]);
+    $service = app(DietitianAdviceService::class);
+
+    $result = $service->askQuestion($user, 'what do I do to loose weight');
+
+    expect($result['source'])->toBe('rules');
+    expect(Str::lower($result['answer']))->toContain('weight loss');
+    expect(Str::lower($result['answer']))->not->toContain('gain steadily');
 });

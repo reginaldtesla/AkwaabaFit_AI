@@ -577,13 +577,29 @@ class DietitianAdviceService
             return 'Keep starch to about a fist-size serving (one ball of banku/fufu/kenkey, or a modest waakye/jollof base), then fill the plate with fish, stew, and kontomire or salad. That balance fits most goals.';
         }
 
-        if (str_contains($q, 'lose') || str_contains($q, 'weight loss') || $goal === 'Lose weight') {
-            return $goal === 'Lose weight'
-                ? 'For your weight-loss goal, prioritize grilled protein, smaller swallow portions, and fewer fried sides. Log meals so we can adjust the rest of your day.'
-                : 'Steady weight loss comes from slightly smaller starch portions, lean protein, and daily walking—not cutting Ghanaian foods entirely.';
+        $asksLose = (bool) preg_match(
+            '/\b(lose|loose|slim|shed|cut)\b.*\bweight\b|\bweight\s*(loss|lose|loose)\b|\blose\s+weight\b|\bloose\s+weight\b/i',
+            $q,
+        );
+        $asksGain = (bool) preg_match(
+            '/\b(gain|put\s+on|bulk)\b.*\bweight\b|\bweight\s*gain\b|\bgain\s+weight\b/i',
+            $q,
+        );
+
+        // Question intent always wins over the saved profile goal.
+        if ($asksLose && ! $asksGain) {
+            return 'Steady weight loss comes from slightly smaller starch portions (one ball of banku/fufu/kenkey or a modest jollof/waakye base), grilled fish or beans for protein, fewer fried sides, water through the day, and daily walking. Log meals so we can steer the rest of your day.';
         }
 
-        if (str_contains($q, 'gain') || $goal === 'Gain weight') {
+        if ($asksGain && ! $asksLose) {
+            return 'To gain steadily, add calorie-dense but nourishing choices: groundnut soup, banku with fish, peanuts, milk, or an extra egg. Eat regularly and keep logging.';
+        }
+
+        if ($goal === 'Lose weight') {
+            return 'For your weight-loss goal, prioritize grilled protein, smaller swallow portions, and fewer fried sides. Log meals so we can adjust the rest of your day.';
+        }
+
+        if ($goal === 'Gain weight') {
             return 'To gain steadily, add calorie-dense but nourishing choices: groundnut soup, banku with fish, peanuts, milk, or an extra egg. Eat regularly and keep logging.';
         }
 
