@@ -278,4 +278,21 @@ class StepLogTest extends TestCase
             ->assertJsonPath('rank', null)
             ->assertJsonPath('totalUsers', null);
     }
+
+    public function test_user_can_sync_high_daily_step_counts(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->postJson('/api/steps/sync', [
+            'step_count' => 150000,
+        ]);
+
+        $response->assertSuccessful();
+
+        $this->assertDatabaseHas('daily_step_logs', [
+            'user_id' => $user->id,
+            'step_count' => 150000,
+            'log_date' => now()->startOfDay(),
+        ]);
+    }
 }

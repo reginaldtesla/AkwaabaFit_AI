@@ -239,9 +239,7 @@ Future<void> backgroundServiceOnStart(ServiceInstance service) async {
         latestTodaySteps =
             await todaySteps.update(event.steps, floor: cached);
         final s = latestTodaySteps ?? 0;
-        if (s >= cached) {
-          unawaited(StepsOfflineRecorder.onStepsChanged(s));
-        }
+        unawaited(StepsOfflineRecorder.onStepsChanged(s));
         unawaited(_onStepsUpdated(s));
         if (android != null) {
           final fgAndroid = android;

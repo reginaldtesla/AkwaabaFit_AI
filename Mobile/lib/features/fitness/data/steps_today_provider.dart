@@ -26,7 +26,7 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
   var calc = TodayStepsFromSensor();
 
   // Show last known steps immediately so Stride is not stuck at 0 while the
-  // pedometer stream warms up.
+  // pedometer stream warms up. First real sensor tick corrects a bad cache.
   final seed = await StepsOfflineRecorder.cachedTodayStepsOrNull();
   if (seed != null && seed > 0) {
     controller.add(seed);
@@ -51,9 +51,7 @@ final stepsTodayProvider = StreamProvider<int>((ref) async* {
             await StepsOfflineRecorder.cachedTodayStepsOrNull() ?? 0;
         final today = await calc.update(event.steps, floor: cached);
         controller.add(today);
-        if (today >= cached) {
-          unawaited(StepsOfflineRecorder.onStepsChanged(today));
-        }
+        unawaited(StepsOfflineRecorder.onStepsChanged(today));
       },
       onError: (_) async {
         final cached = await StepsOfflineRecorder.cachedTodayStepsOrNull();

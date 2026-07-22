@@ -1033,9 +1033,8 @@ class DashboardScreen extends ConsumerWidget {
     final liveSteps = stepsTodayAsync.valueOrNull;
     final merged = applyDeviceWeatherToDashboard(
       data.copyWith(
-        currentSteps: liveSteps == null
-            ? data.currentSteps
-            : (liveSteps > data.currentSteps ? liveSteps : data.currentSteps),
+        // Live pedometer is source of truth when available (server can hold a stale inflate).
+        currentSteps: liveSteps ?? data.currentSteps,
         stepGoal: _effectiveDashboardStepGoal(data, localStepGoal),
         dailyCaloriesTarget:
             _effectiveDashboardDailyCalories(data, localDailyKcal),

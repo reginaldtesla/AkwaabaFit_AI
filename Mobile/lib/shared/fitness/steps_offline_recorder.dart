@@ -11,7 +11,8 @@ class StepsOfflineRecorder {
 
   static DateTime? _lastDirectPostAt;
   static const _lastStepDateKey = 'steps_last_log_date';
-  static const _lastStepCountKey = 'steps_last_log_value';
+  // v2: ignore values poisoned when cumulative-since-reboot was latched as "today".
+  static const _lastStepCountKey = 'steps_last_log_value_v2';
 
   /// Last “today” count saved by [onStepsChanged] when its date matches today (background UI seed).
   static Future<int?> cachedTodayStepsOrNull() async {
@@ -31,25 +32,27 @@ class StepsOfflineRecorder {
   }
 
   static Future<void> onStepsChanged(int steps) async {
+    final safeSteps = steps < 0 ? 0 : steps;
     final db = await SqliteOfflineDb.getInstance();
     final today = DateTime.now().toIso8601String().substring(0, 10);
-    await db.upsertStepsLocal(logDate: today, stepCount: steps);
+    await db.upsertStepsLocal(logDate: today, stepCount: safeSteps);
 
     const storage = FlutterSecureStorage();
     // Option B: daily snapshot rollover. When date changes, persist yesterday and enqueue sync.
     final lastDate = await storage.read(key: _lastStepDateKey);
     final lastValueRaw = await storage.read(key: _lastStepCountKey);
     final lastValue = int.tryParse(lastValueRaw ?? '') ?? 0;
+    final safeLastValue = lastValue < 0 ? 0 : lastValue;
     if (lastDate != null && lastDate.isNotEmpty && lastDate != today) {
       // Store final observed steps for the previous date.
-      await db.upsertStepsLocal(logDate: lastDate, stepCount: lastValue);
+      await db.upsertStepsLocal(logDate: lastDate, stepCount: safeLastValue);
       await db.replacePendingStepsSyncOutbox({
         'log_date': lastDate,
-        'step_count': lastValue,
+        'step_count': safeLastValue,
       });
     }
     await storage.write(key: _lastStepDateKey, value: today);
-    await storage.write(key: _lastStepCountKey, value: steps.toString());
+    await storage.write(key: _lastStepCountKey, value: safeSteps.toString());
 
     final token = await storage.read(key: 'sanctum_token');
     if (token == null || token.isEmpty) return;
@@ -61,10 +64,10 @@ class StepsOfflineRecorder {
         results.contains(ConnectivityResult.ethernet);
 
     if (!online) {
-      await db.replacePendingActivityHourlyOutbox({'step_count': steps});
+      await db.replacePendingActivityHourlyOutbox({'step_count': safeSteps});
       await db.replacePendingStepsSyncOutbox({
         'log_date': today,
-        'step_count': steps,
+        'step_count': safeSteps,
       });
       return;
     }
@@ -75,7 +78,7 @@ class StepsOfflineRecorder {
       // Keep a single pending sync with the latest total for when throttle ends.
       await db.replacePendingStepsSyncOutbox({
         'log_date': today,
-        'step_count': steps,
+        'step_count': safeSteps,
       });
       return;
     }
@@ -83,7 +86,7 @@ class StepsOfflineRecorder {
     try {
       await db.replacePendingStepsSyncOutbox({
         'log_date': today,
-        'step_count': steps,
+        'step_count': safeSteps,
       });
 
       final dio = Dio(
@@ -97,15 +100,15 @@ class StepsOfflineRecorder {
           },
         ),
       );
-      await dio.post('/activity/hourly/log', data: {'step_count': steps});
+      await dio.post('/activity/hourly/log', data: {'step_count': safeSteps});
       await dio.post('/steps/sync', data: {
-        'step_count': steps,
+        'step_count': safeSteps,
         'log_date': today,
       });
       _lastDirectPostAt = now;
       await db.deletePendingActivityHourlyOutbox();
     } catch (_) {
-      await db.replacePendingActivityHourlyOutbox({'step_count': steps});
+      await db.replacePendingActivityHourlyOutbox({'step_count': safeSteps});
     }
   }
 
